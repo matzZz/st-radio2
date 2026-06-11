@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>st-radio – UI-Demo (ohne Backend)</title>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface-2: #1c232b;
+    --border:    #21262d;
+    --text:      #e6e9ef;
+    --muted:     #7d8590;
+    --accent:    #f0b429;
+    --accent-2:  #f7c948;
+    --accent-dim: rgba(240, 180, 41, .14);
+    --danger:    #da3633;
+    --radius:    14px;
+    --font-display: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --font-body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+    padding: clamp(16px, 4vw, 40px);
+  }
+  .shell { max-width: 880px; margin: 0 auto; }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px;
+  }
+  .brand { font-family: var(--font-display); font-size: 18px; letter-spacing: .14em; text-transform: uppercase; }
+  .brand span { color: var(--accent); }
+  .meta { font-family: var(--font-display); font-size: 11px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+
+  .display {
+    background: radial-gradient(120% 80% at 50% 0%, var(--accent-dim) 0%, transparent 55%), var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px 28px 24px; margin-bottom: 28px; position: relative; overflow: hidden;
+  }
+  .display::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent 0, var(--accent) 20%, var(--accent) 80%, transparent 100%);
+    opacity: .35;
+  }
+  .label {
+    font-family: var(--font-display); font-size: 10px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background .25s ease; }
+  .dot.live { background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+
+  .now {
+    font-family: var(--font-display); font-size: clamp(22px, 5vw, 32px); font-weight: 500;
+    letter-spacing: -.01em; line-height: 1.15; word-break: break-word; min-height: 1.2em;
+  }
+  .now.is-idle { color: var(--muted); font-weight: 400; }
+  .sub { margin-top: 6px; font-size: 13px; color: var(--muted); font-family: var(--font-display); letter-spacing: .04em; }
+
+  .eq { margin-top: 18px; display: flex; align-items: flex-end; gap: 4px; height: 28px; }
+  .eq span { display: block; width: 4px; background: var(--accent); border-radius: 2px; opacity: .9; height: 6px; transform-origin: bottom; }
+  .is-playing .eq span { animation: bar 1.2s ease-in-out infinite; }
+  .eq span:nth-child(1) { animation-delay: 0s; }
+  .eq span:nth-child(2) { animation-delay: -.2s; }
+  .eq span:nth-child(3) { animation-delay: -.4s; }
+  .eq span:nth-child(4) { animation-delay: -.1s; }
+  .eq span:nth-child(5) { animation-delay: -.5s; }
+  .eq span:nth-child(6) { animation-delay: -.3s; }
+  .eq span:nth-child(7) { animation-delay: -.6s; }
+  @keyframes bar { 0%,100% { height: 6px; } 50% { height: 28px; } }
+
+  .controls { margin-top: 22px; display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    padding: 10px 16px; border-radius: 999px; font-size: 13px; letter-spacing: .04em;
+    transition: background .15s ease, border-color .15s ease, color .15s ease, transform .05s ease;
+  }
+  button:hover:not(:disabled) { background: var(--surface); border-color: #30363d; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-stop { border-color: rgba(218,54,51,.35); color: #ff7b78; }
+  .btn-stop:hover:not(:disabled) { background: rgba(218,54,51,.12); border-color: rgba(218,54,51,.55); }
+
+  .section-title {
+    font-family: var(--font-display); font-size: 11px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 14px 4px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .station {
+    text-align: left; border-radius: var(--radius); padding: 14px 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; min-height: 64px; color: var(--text);
+  }
+  .station:hover:not(:disabled) { background: var(--surface-2); border-color: #30363d; }
+  .station .index { font-family: var(--font-display); font-size: 11px; color: var(--muted); letter-spacing: .08em; min-width: 22px; }
+  .station .body { flex: 1; min-width: 0; }
+  .station .name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .station .genre { font-family: var(--font-display); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+  .station.is-active { background: var(--accent-dim); border-color: rgba(240,180,41,.45); }
+  .station.is-active .index, .station.is-active .genre { color: var(--accent-2); }
+  .link-btn {
+    flex: 0 0 auto; width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; background: transparent; border: 1px solid transparent;
+    color: var(--muted); cursor: pointer; padding: 0;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .link-btn:hover {
+    color: var(--accent-2);
+    background: rgba(240, 180, 41, .08);
+    border-color: rgba(240, 180, 41, .25);
+  }
+  .link-btn svg { width: 14px; height: 14px; }
+  .mini-eq { display: none; align-items: flex-end; gap: 2px; height: 14px; }
+  .station.is-active .mini-eq { display: flex; }
+  .mini-eq span { width: 2px; background: var(--accent); border-radius: 1px; animation: bar 1.2s ease-in-out infinite; }
+  .mini-eq span:nth-child(1) { animation-delay: -.1s; }
+  .mini-eq span:nth-child(2) { animation-delay: -.4s; }
+  .mini-eq span:nth-child(3) { animation-delay: -.2s; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .demo-banner {
+    background: rgba(240,180,41,.08); border: 1px solid rgba(240,180,41,.3);
+    color: var(--accent-2); padding: 10px 14px; border-radius: 10px;
+    font-family: var(--font-display); font-size: 11px; letter-spacing: .08em;
+    margin-bottom: 20px; text-transform: uppercase;
+  }
+  footer {
+    margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border);
+    font-family: var(--font-display); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dot.live, .eq span, .mini-eq span { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">st<span>·</span>radio</div>
+      <div class="meta" id="clock">--:--</div>
+    </header>
+
+    <div class="demo-banner">Demo-Modus · keine echte Wiedergabe</div>
+
+    <section class="display" id="display" aria-live="polite">
+      <div class="label">
+        <span class="dot" id="dot"></span>
+        <span id="state-label">Bereit</span>
+      </div>
+      <div class="now is-idle" id="now">— kein Sender —</div>
+      <div class="sub" id="sub">Wähle einen Sender unten</div>
+
+      <div class="eq" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="controls">
+        <button class="btn-stop" id="btn-stop" disabled>Ausschalten</button>
+      </div>
+    </section>
+
+    <h2 class="section-title">Sender</h2>
+    <div class="grid" id="stations"></div>
+
+    <footer>
+      <span>matzZz / st-radio – modernisiert</span>
+      <span>Demo</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  // In der Demo werden die Sender direkt im JS gehalten.
+  // In der echten Version kommen sie über fetch('api.php?action=stations').
+  const stations = [
+    { id:1, slug:'detektor-fm-wort',     name:'detektor.fm Wort',     genre:'Talk'  },
+    { id:2, slug:'detektor-fm-musik',    name:'detektor.fm Musik',    genre:'Indie' },
+    { id:3, slug:'swr1-bw',              name:'SWR1 BW',              genre:'Pop'   },
+    { id:4, slug:'swr3',                 name:'SWR3',                 genre:'Pop'   },
+    { id:5, slug:'deutschlandfunk',      name:'Deutschlandfunk',      genre:'News'  },
+    { id:6, slug:'deutschlandfunk-nova', name:'Deutschlandfunk Nova', genre:'Talk'  },
+    { id:7, slug:'bytefm',               name:'ByteFM',               genre:'Indie' },
+    { id:8, slug:'fluxfm',               name:'FluxFM',               genre:'Indie' },
+  ];
+
+  const $ = sel => document.querySelector(sel);
+  const display = $('#display'), dot = $('#dot'), stateLb = $('#state-label');
+  const now = $('#now'), sub = $('#sub'), btnStop = $('#btn-stop');
+  const grid = $('#stations'), toast = $('#toast'), clock = $('#clock');
+  let currentId = null;
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  function renderStations() {
+    grid.innerHTML = '';
+    stations.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'station' + (s.id === currentId ? ' is-active' : '');
+      card.innerHTML = `
+        <button class="play-area" style="all: unset; cursor: pointer; flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; color: inherit;">
+          <span class="index">${String(s.id).padStart(2,'0')}</span>
+          <span class="body">
+            <span class="name"></span>
+            <span class="genre"></span>
+          </span>
+        </button>
+        <span class="mini-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+        <button class="link-btn" title="Webhook-URL anzeigen" aria-label="Webhook-URL für ${s.name}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+          </svg>
+        </button>
+      `;
+      card.querySelector('.name').textContent  = s.name;
+      card.querySelector('.genre').textContent = s.genre;
+      card.querySelector('.play-area').addEventListener('click', () => play(s));
+      card.querySelector('.link-btn').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const url = 'http://<pi>/api.php?action=play&slug=' + s.slug;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(url).catch(()=>{});
+        }
+        showToast('Webhook: …slug=' + s.slug);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  function setPlaying(s) {
+    currentId = s ? s.id : null;
+    if (s) {
+      display.classList.add('is-playing');
+      dot.classList.add('live');
+      stateLb.textContent = 'Live';
+      now.textContent = s.name;
+      now.classList.remove('is-idle');
+      sub.textContent = s.genre.toUpperCase();
+      btnStop.disabled = false;
+    } else {
+      display.classList.remove('is-playing');
+      dot.classList.remove('live');
+      stateLb.textContent = 'Bereit';
+      now.textContent = '— kein Sender —';
+      now.classList.add('is-idle');
+      sub.textContent = 'Wähle einen Sender unten';
+      btnStop.disabled = true;
+    }
+    renderStations();
+  }
+
+  function play(s)  { setPlaying(s); showToast('Spielt: ' + s.name); }
+  function stop()   { setPlaying(null); showToast('Gestoppt.'); }
+
+  function tickClock() {
+    const d = new Date();
+    clock.textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  btnStop.addEventListener('click', stop);
+  tickClock(); setInterval(tickClock, 30 * 1000);
+  renderStations();
+})();
+</script>
+</body>
+</html>
