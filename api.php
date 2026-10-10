@@ -13,14 +13,19 @@ declare(strict_types=1);
  *   GET  api.php?action=play&id=3        → Sender mit ID 3 starten
  *   GET  api.php?action=play&slug=swr3   → Sender per Slug starten (stabil)
  *   GET  api.php?action=stop             → Wiedergabe stoppen
+ *   POST api.php?action=save             → Senderliste speichern (JSON-Body,
+ *                                          nur POST mit application/json)
  *
  * Optional: &redirect=1 hängt sich an play/stop dran und leitet auf
  * index.html zurück – praktisch, wenn man den Link direkt im Browser
  * anklickt statt per Webhook aufzurufen.
  *
  * Sicherheit:
- *   - Stream-URLs werden NIE aus dem Request übernommen, sondern per
- *     ID/Slug aus der CSV-Whitelist nachgeschlagen.
+ *   - Stream-URLs werden beim Abspielen NIE aus dem Request übernommen,
+ *     sondern per ID/Slug aus der CSV-Whitelist nachgeschlagen.
+ *   - Die Whitelist selbst ändert nur action=save: nur http(s)-URLs,
+ *     und nur per POST mit JSON-Body – ein Link oder ein simples
+ *     Formular von einer fremden Webseite kann sie so nicht ändern.
  *   - Alle Shell-Argumente laufen durch escapeshellarg().
  *   - Annahme: Pi läuft im Heimnetz. CSRF-Schutz ist hier bewusst
  *     nicht eingebaut, weil das den Webhook-Use-Case kaputtmachen würde.
@@ -76,6 +81,71 @@ function load_stations(): array {
     }
     fclose($fh);
     return $stations;
+}
+
+/** Entfernt Steuerzeichen, trimmt und kürzt ein Eingabefeld. */
+function clean_field($value, int $max): string {
+    $s = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) $value) ?? '';
+    return mb_substr(trim($s), 0, $max, 'UTF-8');
+}
+
+/**
+ * Prüft die Senderliste aus dem Editor.
+ * Gibt die bereinigten Zeilen [name, url, genre] zurück oder einen Fehlertext.
+ *
+ * @return array|string
+ */
+function validate_stations(array $input) {
+    $rows  = [];
+    $slugs = [];
+    foreach (array_values($input) as $i => $row) {
+        $nr = $i + 1;
+        if (!is_array($row)) {
+            return "Sender $nr: ungültige Daten";
+        }
+        $name  = clean_field($row['name']  ?? '', 60);
+        $url   = clean_field($row['url']   ?? '', 500);
+        $genre = clean_field($row['genre'] ?? '', 30);
+
+        if ($name === '') {
+            return "Sender $nr: Name fehlt";
+        }
+        $slug = make_slug($name);
+        if ($slug === '') {
+            return "„{$name}“: Name braucht Buchstaben oder Ziffern";
+        }
+        if (isset($slugs[$slug])) {
+            return "„{$name}“ gibt es doppelt";
+        }
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || !in_array($scheme, ['http', 'https'], true)) {
+            return "„{$name}“: Stream-URL muss mit http:// oder https:// beginnen";
+        }
+        $slugs[$slug] = true;
+        $rows[] = [$name, $url, $genre];
+    }
+    if ($rows === []) {
+        return 'Mindestens ein Sender wird gebraucht';
+    }
+    return $rows;
+}
+
+/** Schreibt die Senderliste atomar nach radio.csv (alte Version → radio.csv.bak). */
+function save_stations(array $rows): bool {
+    $tmp = CSV_FILE . '.tmp';
+    $fh  = fopen($tmp, 'w');
+    if ($fh === false) {
+        return false;
+    }
+    fputcsv($fh, ['name', 'url', 'genre'], ';');
+    foreach ($rows as $row) {
+        fputcsv($fh, $row, ';');
+    }
+    fclose($fh);
+    if (is_file(CSV_FILE)) {
+        @copy(CSV_FILE, CSV_FILE . '.bak');
+    }
+    return rename($tmp, CSV_FILE);
 }
 
 /** Sucht einen Sender per ID oder Slug aus der Whitelist. */
@@ -142,7 +212,17 @@ switch ($action) {
             write_state(null);
             respond(['playing' => false, 'station' => null]);
         }
-        respond(['playing' => true, 'station' => $state['station'] ?? null]);
+        $station = $state['station'] ?? null;
+        // Wurde die Senderliste inzwischen bearbeitet, aktuelle ID/Name nachschlagen
+        if (is_array($station)) {
+            foreach (load_stations() as $s) {
+                if ($s['url'] === ($station['url'] ?? null)) {
+                    $station = $s;
+                    break;
+                }
+            }
+        }
+        respond(['playing' => true, 'station' => $station]);
     }
 
     case 'play': {
@@ -189,6 +269,27 @@ switch ($action) {
         respond(['playing' => false, 'station' => null]);
     }
 
+    case 'save': {
+        // Nur POST mit JSON – siehe Sicherheitshinweis oben.
+        $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+        $isJson = stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0;
+        if (!$isPost || !$isJson) {
+            respond(['error' => 'Speichern nur per POST mit JSON'], 405);
+        }
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (!is_array($body) || !isset($body['stations']) || !is_array($body['stations'])) {
+            respond(['error' => 'Ungültige Daten'], 400);
+        }
+        $rows = validate_stations($body['stations']);
+        if (is_string($rows)) {
+            respond(['error' => $rows], 400);
+        }
+        if (!save_stations($rows)) {
+            respond(['error' => 'radio.csv konnte nicht geschrieben werden'], 500);
+        }
+        respond(['stations' => load_stations()]);
+    }
+
     default:
-        respond(['error' => 'Unbekannte action. Erlaubt: stations | status | play | stop'], 400);
+        respond(['error' => 'Unbekannte action. Erlaubt: stations | status | play | stop | save'], 400);
 }

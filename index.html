@@ -304,6 +304,101 @@
   .mini-eq span:nth-child(2) { animation-delay: -.4s; }
   .mini-eq span:nth-child(3) { animation-delay: -.2s; }
 
+  /* ---------- Sender-Editor ---------- */
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px 4px;
+  }
+  .section-head .section-title { margin: 0; }
+  .btn-small { padding: 6px 12px; font-size: 12px; }
+
+  .editor { display: none; }
+  .editing .grid { display: none; }
+  .editing .editor { display: block; }
+
+  .editor-note {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+    margin: 0 4px 12px;
+  }
+  .editor-note code { font-family: var(--font-display); color: var(--text); }
+
+  .edit-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 2fr) minmax(0, .7fr) auto;
+    gap: 8px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .edit-row .index {
+    font-family: var(--font-display);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .08em;
+  }
+  .edit-row input {
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    min-width: 0;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .edit-row input::placeholder { color: var(--muted); }
+  .edit-row input:focus {
+    outline: none;
+    border-color: rgba(240, 180, 41, .55);
+  }
+  .row-actions { display: flex; gap: 4px; }
+  .icon-btn {
+    width: 32px; height: 32px;
+    padding: 0;
+    border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn.danger:hover:not(:disabled) {
+    color: #ff7b78;
+    border-color: rgba(218, 54, 51, .55);
+    background: rgba(218, 54, 51, .12);
+  }
+
+  .editor-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0d1117;
+    font-weight: 600;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+  }
+
+  @media (max-width: 640px) {
+    .edit-row { grid-template-columns: 28px minmax(0, 1fr) auto; }
+    .edit-row .index       { grid-column: 1; grid-row: 1; }
+    .edit-row .f-name      { grid-column: 2; grid-row: 1; }
+    .edit-row .row-actions { grid-column: 3; grid-row: 1; }
+    .edit-row .f-url,
+    .edit-row .f-genre     { grid-column: 2 / 4; }
+  }
+
   /* ---------- Toast / Fehler ---------- */
   .toast {
     position: fixed;
@@ -376,10 +471,30 @@
       </div>
     </section>
 
-    <h2 class="section-title">Sender</h2>
-    <div class="grid" id="stations">
-      <!-- befüllt per JS -->
-    </div>
+    <section id="list-wrap">
+      <div class="section-head">
+        <h2 class="section-title">Sender</h2>
+        <button class="btn-small" id="btn-edit">Bearbeiten</button>
+      </div>
+
+      <div class="grid" id="stations">
+        <!-- befüllt per JS -->
+      </div>
+
+      <div class="editor" id="editor">
+        <p class="editor-note">
+          Die Nummer ist die Position in der Liste. Alte Links wie
+          <code>radio.php?name=2</code> (z.&nbsp;B. vom Shelly) starten immer den Sender
+          an dieser Position – beim Löschen oder Verschieben rutschen die Nummern nach.
+        </p>
+        <div id="edit-rows"></div>
+        <div class="editor-actions">
+          <button id="btn-add">+ Sender hinzufügen</button>
+          <button class="btn-primary" id="btn-save">Speichern</button>
+          <button id="btn-cancel">Abbrechen</button>
+        </div>
+      </div>
+    </section>
 
     <footer>
       <span>matzZz / st-radio</span>
@@ -560,6 +675,102 @@
       String(d.getHours()).padStart(2, '0') + ':' +
       String(d.getMinutes()).padStart(2, '0');
   }
+
+  // ---------- Sender-Editor ----------
+  const listWrap  = $('#list-wrap');
+  const rowsEl    = $('#edit-rows');
+  const btnEdit   = $('#btn-edit');
+  const btnAdd    = $('#btn-add');
+  const btnSave   = $('#btn-save');
+  const btnCancel = $('#btn-cancel');
+
+  let draft = [];
+
+  function openEditor() {
+    draft = stations.map(s => ({ name: s.name, url: s.url, genre: s.genre }));
+    if (draft.length === 0) draft.push({ name: '', url: '', genre: '' });
+    renderEditor();
+    listWrap.classList.add('editing');
+    btnEdit.hidden = true;
+  }
+
+  function closeEditor() {
+    listWrap.classList.remove('editing');
+    btnEdit.hidden = false;
+  }
+
+  function renderEditor() {
+    rowsEl.innerHTML = '';
+    draft.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 'edit-row';
+      row.innerHTML = `
+        <span class="index">${String(i + 1).padStart(2, '0')}</span>
+        <input class="f-name" placeholder="Name" aria-label="Name" maxlength="60">
+        <input class="f-url" placeholder="https://… (Stream-URL)" aria-label="Stream-URL"
+               inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <input class="f-genre" placeholder="Genre" aria-label="Genre" maxlength="30">
+        <span class="row-actions">
+          <button class="icon-btn" data-act="up" title="Nach oben" aria-label="Nach oben">↑</button>
+          <button class="icon-btn" data-act="down" title="Nach unten" aria-label="Nach unten">↓</button>
+          <button class="icon-btn danger" data-act="del" title="Löschen" aria-label="Löschen">✕</button>
+        </span>
+      `;
+      for (const field of ['name', 'url', 'genre']) {
+        const input = row.querySelector('.f-' + field);
+        input.value = s[field] || '';
+        input.addEventListener('input', () => { s[field] = input.value; });
+      }
+      row.querySelector('[data-act=up]').disabled   = i === 0;
+      row.querySelector('[data-act=down]').disabled = i === draft.length - 1;
+      row.querySelector('.row-actions').addEventListener('click', ev => {
+        const btn = ev.target.closest('button');
+        if (!btn) return;
+        if (btn.dataset.act === 'del') {
+          if (!confirm(`„${s.name || 'Sender ' + (i + 1)}“ löschen?`)) return;
+          draft.splice(i, 1);
+        } else {
+          const j = btn.dataset.act === 'up' ? i - 1 : i + 1;
+          [draft[i], draft[j]] = [draft[j], draft[i]];
+        }
+        renderEditor();
+      });
+      rowsEl.appendChild(row);
+    });
+  }
+
+  function addRow() {
+    draft.push({ name: '', url: '', genre: '' });
+    renderEditor();
+    rowsEl.lastElementChild.querySelector('.f-name').focus();
+  }
+
+  async function saveStations() {
+    btnSave.disabled = true;
+    try {
+      const res = await fetch('api.php?action=save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stations: draft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      stations = data.stations || [];
+      renderStations();
+      closeEditor();
+      showToast('Senderliste gespeichert.');
+      refreshStatus();
+    } catch (e) {
+      showToast(e.message, true);
+    } finally {
+      btnSave.disabled = false;
+    }
+  }
+
+  btnEdit.addEventListener('click', openEditor);
+  btnAdd.addEventListener('click', addRow);
+  btnSave.addEventListener('click', saveStations);
+  btnCancel.addEventListener('click', closeEditor);
 
   btnStop.addEventListener('click', stop);
 
