@@ -70,9 +70,11 @@ function load_stations(): array {
             continue;
         }
         $name = $row[0] ?? '';
+        // Feste Kennung aus Spalte 4; ältere CSVs ohne die Spalte → aus dem Namen
+        $slug = make_slug($row[3] ?? '');
         $stations[] = [
             'id'    => count($stations) + 1,
-            'slug'  => make_slug($name),
+            'slug'  => $slug !== '' ? $slug : make_slug($name),
             'name'  => $name,
             'url'   => $row[1] ?? '',
             'genre' => $row[2] ?? '',
@@ -91,7 +93,12 @@ function clean_field($value, int $max): string {
 
 /**
  * Prüft die Senderliste aus dem Editor.
- * Gibt die bereinigten Zeilen [name, url, genre] zurück oder einen Fehlertext.
+ * Gibt die bereinigten Zeilen [name, url, genre, slug] zurück oder einen Fehlertext.
+ *
+ * Bestehende Sender schicken ihre Kennung (slug) mit – die bleibt auch beim
+ * Umbenennen gleich, damit gespeicherte Links (Shelly, Webhooks) weiter
+ * funktionieren. Neue Sender bekommen eine Kennung aus dem Namen, bei
+ * Kollision mit Suffix (-2, -3, …).
  *
  * @return array|string
  */
@@ -106,27 +113,45 @@ function validate_stations(array $input) {
         $name  = clean_field($row['name']  ?? '', 60);
         $url   = clean_field($row['url']   ?? '', 500);
         $genre = clean_field($row['genre'] ?? '', 30);
+        $slug  = make_slug(clean_field($row['slug'] ?? '', 60));
 
         if ($name === '') {
             return "Sender $nr: Name fehlt";
         }
-        $slug = make_slug($name);
-        if ($slug === '') {
+        if ($slug === '' && make_slug($name) === '') {
             return "„{$name}“: Name braucht Buchstaben oder Ziffern";
         }
-        if (isset($slugs[$slug])) {
-            return "„{$name}“ gibt es doppelt";
+        if ($slug !== '' && isset($slugs[$slug])) {
+            return "Kennung „{$slug}“ gibt es doppelt";
         }
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
         if (filter_var($url, FILTER_VALIDATE_URL) === false || !in_array($scheme, ['http', 'https'], true)) {
             return "„{$name}“: Stream-URL muss mit http:// oder https:// beginnen";
         }
-        $slugs[$slug] = true;
-        $rows[] = [$name, $url, $genre];
+        if ($slug !== '') {
+            $slugs[$slug] = true;
+        }
+        $rows[] = [$name, $url, $genre, $slug];
     }
     if ($rows === []) {
         return 'Mindestens ein Sender wird gebraucht';
     }
+
+    // Neue Sender: Kennung aus dem Namen, ohne bestehende zu überschreiben
+    foreach ($rows as &$row) {
+        if ($row[3] !== '') {
+            continue;
+        }
+        $base = make_slug($row[0]);
+        $slug = $base;
+        for ($n = 2; isset($slugs[$slug]); $n++) {
+            $slug = "$base-$n";
+        }
+        $slugs[$slug] = true;
+        $row[3] = $slug;
+    }
+    unset($row);
+
     return $rows;
 }
 
@@ -137,7 +162,7 @@ function save_stations(array $rows): bool {
     if ($fh === false) {
         return false;
     }
-    fputcsv($fh, ['name', 'url', 'genre'], ';');
+    fputcsv($fh, ['name', 'url', 'genre', 'slug'], ';');
     foreach ($rows as $row) {
         fputcsv($fh, $row, ';');
     }
@@ -216,7 +241,7 @@ switch ($action) {
         // Wurde die Senderliste inzwischen bearbeitet, aktuelle ID/Name nachschlagen
         if (is_array($station)) {
             foreach (load_stations() as $s) {
-                if ($s['url'] === ($station['url'] ?? null)) {
+                if ($s['slug'] === ($station['slug'] ?? null)) {
                     $station = $s;
                     break;
                 }
