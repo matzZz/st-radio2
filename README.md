@@ -54,13 +54,13 @@ Am einfachsten im Browser: In der Oberfläche auf **Bearbeiten** klicken – dor
 Alternativ von Hand: `radio.csv` ist semikolon-getrennt:
 
 ```
-name;url;genre
-SWR3;https://liveradio.swr.de/sw282p3/swr3/play.mp3;Pop
+name;url;genre;slug
+SWR3;https://liveradio.swr.de/sw282p3/swr3/play.mp3;Pop;swr3
 ```
 
 Eine Header-Zeile (`name;…`) wird erkannt und übersprungen.
 
-Jeder Sender bekommt automatisch einen **Slug** aus dem Namen (z.B. `SWR3` → `swr3`, `detektor.fm Wort` → `detektor-fm-wort`). Den Slug brauchst du für stabile Webhook-URLs (siehe nächster Abschnitt).
+Jeder Sender hat einen festen **Slug** (Spalte 4). Er wird beim Anlegen einmal aus dem Namen gebildet (z.B. `SWR3` → `swr3`, `detektor.fm Wort` → `detektor-fm-wort`) und bleibt danach gleich – auch wenn du den Sender im Editor umbenennst. Fehlt die Spalte (ältere `radio.csv`), wird der Slug aus dem Namen abgeleitet und beim nächsten Speichern festgeschrieben. Den Slug brauchst du für stabile Webhook-URLs (siehe nächster Abschnitt).
 
 ## Webhooks / Direkte Links
 
@@ -73,7 +73,7 @@ http://<pi>/api.php?action=play&id=3
 http://<pi>/api.php?action=stop
 ```
 
-**Slug oder ID?** Nimm den **Slug**, wenn du die URL irgendwo speicherst – der bleibt stabil, auch wenn du die Reihenfolge in `radio.csv` änderst. Die ID ist nur die Zeilennummer und verschiebt sich beim Umsortieren.
+**Slug oder ID?** Nimm den **Slug**, wenn du die URL irgendwo speicherst – der bleibt stabil, auch wenn du Sender umsortierst oder umbenennst. Die ID ist nur die Zeilennummer und verschiebt sich beim Umsortieren.
 
 Antwort ist JSON (HTTP 200 bei Erfolg, 404 wenn der Sender nicht in der CSV steht). Wenn du den Link direkt im Browser anklickst und nicht JSON, sondern das UI sehen willst, hänge `&redirect=1` an:
 
