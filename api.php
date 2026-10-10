@@ -16,6 +16,8 @@ declare(strict_types=1);
  *   POST api.php?action=save             → Senderliste speichern (JSON-Body,
  *                                          nur POST mit application/json)
  *
+ * Optional: &lang=en liefert Fehlermeldungen auf Englisch (Standard: Deutsch).
+ *
  * Optional: &redirect=1 hängt sich an play/stop dran und leitet auf
  * index.html zurück – praktisch, wenn man den Link direkt im Browser
  * anklickt statt per Webhook aufzurufen.
@@ -40,6 +42,49 @@ const CSV_FILE   = __DIR__ . '/radio.csv';
 const STATE_FILE = __DIR__ . '/.radio-state.json';
 const PLAY_SH    = __DIR__ . '/radio.sh';
 const STOP_SH    = __DIR__ . '/ruhe.sh';
+
+/** Fehlermeldungen in beiden Sprachen; Platzhalter in {geschweiften Klammern}. */
+const MESSAGES = [
+    'de' => [
+        'invalid_row'    => 'Sender {nr}: ungültige Daten',
+        'name_missing'   => 'Sender {nr}: Name fehlt',
+        'name_chars'     => '„{name}“: Name braucht Buchstaben oder Ziffern',
+        'slug_dup'       => 'Kennung „{slug}“ gibt es doppelt',
+        'url_invalid'    => '„{name}“: Stream-URL muss mit http:// oder https:// beginnen',
+        'need_one'       => 'Mindestens ein Sender wird gebraucht',
+        'id_or_slug'     => 'id oder slug erforderlich',
+        'not_found'      => 'Sender nicht gefunden',
+        'post_json'      => 'Speichern nur per POST mit JSON',
+        'bad_data'       => 'Ungültige Daten',
+        'write_failed'   => 'radio.csv konnte nicht geschrieben werden',
+        'unknown_action' => 'Unbekannte action. Erlaubt: stations | status | play | stop | save',
+    ],
+    'en' => [
+        'invalid_row'    => 'Station {nr}: invalid data',
+        'name_missing'   => 'Station {nr}: name is missing',
+        'name_chars'     => '“{name}”: name needs letters or digits',
+        'slug_dup'       => 'ID “{slug}” is used twice',
+        'url_invalid'    => '“{name}”: stream URL must start with http:// or https://',
+        'need_one'       => 'At least one station is required',
+        'id_or_slug'     => 'id or slug required',
+        'not_found'      => 'Station not found',
+        'post_json'      => 'Saving requires POST with JSON',
+        'bad_data'       => 'Invalid data',
+        'write_failed'   => 'Could not write radio.csv',
+        'unknown_action' => 'Unknown action. Allowed: stations | status | play | stop | save',
+    ],
+];
+
+define('LANG', ($_GET['lang'] ?? '') === 'en' ? 'en' : 'de');
+
+/** Übersetzt eine Fehlermeldung, z.B. t('name_missing', ['nr' => 3]). */
+function t(string $key, array $vars = []): string {
+    $msg = MESSAGES[LANG][$key] ?? $key;
+    foreach ($vars as $k => $v) {
+        $msg = str_replace('{' . $k . '}', (string) $v, $msg);
+    }
+    return $msg;
+}
 
 /** Erzeugt einen URL-tauglichen Slug aus dem Sendernamen. */
 function make_slug(string $name): string {
@@ -108,7 +153,7 @@ function validate_stations(array $input) {
     foreach (array_values($input) as $i => $row) {
         $nr = $i + 1;
         if (!is_array($row)) {
-            return "Sender $nr: ungültige Daten";
+            return t('invalid_row', ['nr' => $nr]);
         }
         $name  = clean_field($row['name']  ?? '', 60);
         $url   = clean_field($row['url']   ?? '', 500);
@@ -116,17 +161,17 @@ function validate_stations(array $input) {
         $slug  = make_slug(clean_field($row['slug'] ?? '', 60));
 
         if ($name === '') {
-            return "Sender $nr: Name fehlt";
+            return t('name_missing', ['nr' => $nr]);
         }
         if ($slug === '' && make_slug($name) === '') {
-            return "„{$name}“: Name braucht Buchstaben oder Ziffern";
+            return t('name_chars', ['name' => $name]);
         }
         if ($slug !== '' && isset($slugs[$slug])) {
-            return "Kennung „{$slug}“ gibt es doppelt";
+            return t('slug_dup', ['slug' => $slug]);
         }
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
         if (filter_var($url, FILTER_VALIDATE_URL) === false || !in_array($scheme, ['http', 'https'], true)) {
-            return "„{$name}“: Stream-URL muss mit http:// oder https:// beginnen";
+            return t('url_invalid', ['name' => $name]);
         }
         if ($slug !== '') {
             $slugs[$slug] = true;
@@ -134,7 +179,7 @@ function validate_stations(array $input) {
         $rows[] = [$name, $url, $genre, $slug];
     }
     if ($rows === []) {
-        return 'Mindestens ein Sender wird gebraucht';
+        return t('need_one');
     }
 
     // Neue Sender: Kennung aus dem Namen, ohne bestehende zu überschreiben
@@ -259,13 +304,13 @@ switch ($action) {
         $slug = isset($_GET['slug']) ? make_slug((string) $_GET['slug']) : null;
 
         if ($id === null && ($slug === null || $slug === '')) {
-            respond(['error' => 'id oder slug erforderlich'], 400);
+            respond(['error' => t('id_or_slug')], 400);
         }
 
         $stations = load_stations();
         $station  = find_station($stations, $id, $slug);
         if ($station === null) {
-            respond(['error' => 'Sender nicht gefunden'], 404);
+            respond(['error' => t('not_found')], 404);
         }
 
         // Erst laufenden Player stoppen
@@ -299,22 +344,22 @@ switch ($action) {
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $isJson = stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0;
         if (!$isPost || !$isJson) {
-            respond(['error' => 'Speichern nur per POST mit JSON'], 405);
+            respond(['error' => t('post_json')], 405);
         }
         $body = json_decode((string) file_get_contents('php://input'), true);
         if (!is_array($body) || !isset($body['stations']) || !is_array($body['stations'])) {
-            respond(['error' => 'Ungültige Daten'], 400);
+            respond(['error' => t('bad_data')], 400);
         }
         $rows = validate_stations($body['stations']);
         if (is_string($rows)) {
             respond(['error' => $rows], 400);
         }
         if (!save_stations($rows)) {
-            respond(['error' => 'radio.csv konnte nicht geschrieben werden'], 500);
+            respond(['error' => t('write_failed')], 500);
         }
         respond(['stations' => load_stations()]);
     }
 
     default:
-        respond(['error' => 'Unbekannte action. Erlaubt: stations | status | play | stop | save'], 400);
+        respond(['error' => t('unknown_action')], 400);
 }
