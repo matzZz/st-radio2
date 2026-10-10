@@ -1,9 +1,6 @@
 name;url;genre
-detektor.fm Wort;https://cdn.detektor.fm/streams/dwort.mp3;Talk
-detektor.fm Musik;https://stream.hoerradar.de/detektorfm-musik-mp3-128;Indie
-SWR1 BW;https://liveradio.swr.de/sw282p3/swr1bw/play.mp3;Pop
-SWR3;https://liveradio.swr.de/sw282p3/swr3/play.mp3;Pop
-Deutschlandfunk;https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3;News
-Deutschlandfunk Nova;https://st03.sslstream.dlf.de/dlf/03/128/mp3/stream.mp3;Talk
-ByteFM;https://www.byte.fm/stream/bytefm.m3u;Indie
-FluxFM;https://streams.fluxfm.de/live/mp3-320/audio/;Indie
+detektorfmWort;https://streams.detektor.fm/wort/mp3-256/website/play.pls;Talk
+detektorfmMusik;https://streams.detektor.fm/musik/mp3-256/website/play.pls;Indie
+SWR1;https://dispatcher.rndfnk.com/swr/swr1/bw/mp3/128/stream.mp3;Pop
+Regenbogen;http://streams.regenbogen.de/rr-mannheim-128-aac;Pop
+ByteFM;https://bytefm--di--nacs-ice-01--01--cdn.cast.addradio.de/bytefm/main/mid/stream.mp3;Indie

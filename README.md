@@ -17,20 +17,21 @@ Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/mat
 
 - `index.html` – Single-Page-Oberfläche
 - `api.php` – JSON-API (`stations`, `status`, `play`, `stop`)
-- `radio.sh` – startet `mplayer` mit der Stream-URL
-- `ruhe.sh` – beendet `mplayer`
+- `radio.sh` – startet `mpv` mit der Stream-URL und gibt dessen PID aus
+- `ruhe.sh` – beendet `mpv`
+- `radio.php`, `ruhe.php` – Kompatibilität für alte Links (s. u.)
 - `radio.csv` – Senderliste: `name;url;genre` (Header-Zeile optional)
 
 ## Setup
 
 ```sh
-sudo apt-get install mplayer apache2 php
+sudo apt-get install mpv apache2 php php-mbstring
 # Projektdateien nach /var/www/html/ kopieren
 sudo chown -R www-data:www-data /var/www/html
 sudo chmod +x /var/www/html/radio.sh /var/www/html/ruhe.sh
 ```
 
-Standardmäßig läuft Apache als `www-data` – belass es dabei (das alte Setup mit `pi` als Apache-User war praktisch, aber unsicher). Damit `www-data` `mplayer` starten darf, reicht das so, weil `mplayer` keine Root-Rechte braucht. Falls Audio nicht rauskommt, prüfe Gruppenmitgliedschaft:
+Standardmäßig läuft Apache als `www-data` – belass es dabei (das alte Setup mit `pi` als Apache-User war praktisch, aber unsicher). Damit `www-data` `mpv` starten darf, reicht das so, weil `mpv` keine Root-Rechte braucht. Falls Audio nicht rauskommt, prüfe Gruppenmitgliedschaft:
 
 ```sh
 sudo usermod -aG audio www-data
@@ -79,3 +80,16 @@ http://<pi>/api.php?action=play&slug=swr3&redirect=1
 ```
 
 In der Web-Oberfläche hast du neben jedem Sender ein kleines Link-Symbol – ein Klick kopiert die passende Webhook-URL in die Zwischenablage.
+
+## Alte Links (Upgrade von st-radio)
+
+Wer vom alten st-radio kommt, kann bestehende Aufrufe (z.B. Shelly-Actions, Homebridge) unverändert lassen:
+
+```
+http://<pi>/radio.php?name=2   → wie api.php?action=play&id=2
+http://<pi>/ruhe.php           → wie api.php?action=stop
+```
+
+Beide leiten danach auf `index.html` weiter. Die Reihenfolge in `radio.csv` muss dafür gleich bleiben (die Header-Zeile zählt nicht mit).
+
+Läuft Apache aus dem alten Setup noch als `pi`, kann das so bleiben – das Webverzeichnis muss dann `pi` gehören (`sudo chown -R pi:pi /var/www/html`), damit `api.php` die Statusdatei schreiben kann.

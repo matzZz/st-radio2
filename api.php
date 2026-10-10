@@ -147,7 +147,7 @@ switch ($action) {
 
     case 'play': {
         // GET und POST beide erlaubt – siehe Webhook-Hinweis oben.
-        $id   = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, [
+        $id   = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1],
         ]);
         $id   = (is_int($id) && $id > 0) ? $id : null;
@@ -167,7 +167,8 @@ switch ($action) {
         @exec(escapeshellcmd(STOP_SH) . ' 2>&1');
 
         // Dann neuen Stream starten – URL aus Whitelist, sauber escaped
-        $cmd = escapeshellcmd(PLAY_SH) . ' ' . escapeshellarg($station['url']) . ' >/dev/null 2>&1 & echo $!';
+        // radio.sh startet den Player im Hintergrund und gibt dessen PID aus
+        $cmd = escapeshellcmd(PLAY_SH) . ' ' . escapeshellarg($station['url']) . ' 2>/dev/null';
         $pid = (int) trim((string) shell_exec($cmd));
 
         write_state([
