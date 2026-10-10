@@ -1,5 +1,7 @@
 # st-radio (modernisiert)
 
+🇬🇧 [English version](README.en.md)
+
 Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/matzZz/st-radio).
 
 <p>
@@ -22,11 +24,11 @@ Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/mat
 ## Dateien
 
 - `index.html` – Single-Page-Oberfläche
-- `api.php` – JSON-API (`stations`, `status`, `play`, `stop`)
+- `api.php` – JSON-API (`stations`, `status`, `play`, `stop`, `save`)
 - `radio.sh` – startet `mpv` mit der Stream-URL und gibt dessen PID aus
 - `ruhe.sh` – beendet `mpv`
 - `radio.php`, `ruhe.php` – Kompatibilität für alte Links (s. u.)
-- `radio.csv` – Senderliste: `name;url;genre` (Header-Zeile optional)
+- `radio.csv` – Senderliste: `name;url;genre;slug` (Header-Zeile optional)
 
 ## Setup
 
@@ -42,6 +44,12 @@ Standardmäßig läuft Apache als `www-data` – belass es dabei (das alte Setup
 ```sh
 sudo usermod -aG audio www-data
 ```
+
+## Sprache
+
+Die Oberfläche gibt es auf Deutsch und Englisch. Umschalten oben rechts über **DE | EN** – die Wahl merkt sich der Browser. Beim ersten Besuch gilt die Browsersprache (Englisch bei englischem Browser, sonst Deutsch). Per Link geht es auch direkt: `http://<pi>/?lang=en`.
+
+Die API liefert Fehlermeldungen standardmäßig auf Deutsch, mit `&lang=en` auf Englisch.
 
 ## Sicherheit
 
