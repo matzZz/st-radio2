@@ -2,6 +2,12 @@
 
 Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/matzZz/st-radio).
 
+<p>
+  <img src="docs/screenshot-desktop.png" alt="st-radio im Browser (Desktop)" width="640">
+  &nbsp;
+  <img src="docs/screenshot-mobile.png" alt="st-radio auf dem Smartphone" width="200">
+</p>
+
 ## Was sich geändert hat
 
 | Vorher                                      | Jetzt                                        |
