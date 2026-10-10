@@ -49,7 +49,9 @@ Damit gibt es keinen Pfad mehr, über den ein Webrequest direkt eine beliebige S
 
 ## Senderpflege
 
-`radio.csv` ist semikolon-getrennt:
+Am einfachsten im Browser: In der Oberfläche auf **Bearbeiten** klicken – dort lassen sich Sender hinzufügen, umbenennen, verschieben und löschen. Beim Speichern prüft `api.php` die Eingaben (Name Pflicht und eindeutig, nur `http://`/`https://`-URLs) und legt die vorherige Liste als `radio.csv.bak` ab.
+
+Alternativ von Hand: `radio.csv` ist semikolon-getrennt:
 
 ```
 name;url;genre
