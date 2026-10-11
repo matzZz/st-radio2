@@ -1,5 +1,5 @@
 #!/bin/sh
-# st-radio – Stream starten
+# mare-radio – Stream starten
 # Aufruf: radio.sh <stream-url>
 # Wird von api.php nur mit URLs aus radio.csv aufgerufen (Whitelist).
 # Gibt die PID des Players auf stdout aus (für den Status-Endpoint).

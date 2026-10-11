@@ -4,11 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d1117">
-<title>st-radio</title>
+<title>mare-radio</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-title" content="Radio">
+<meta name="apple-mobile-web-app-title" content="mare-radio">
+<script>
+  // Theme vor dem ersten Zeichnen setzen, sonst blitzt kurz der dunkle Modus auf.
+  // Gespeicherte Wahl hat Vorrang, sonst gilt die Systemeinstellung.
+  (() => {
+    let theme = null;
+    try { theme = localStorage.getItem('st-radio-theme'); } catch (e) {}
+    if (theme !== 'light' && theme !== 'dark') {
+      theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>
 <style>
   :root {
     --bg:        #0d1117;
@@ -21,9 +33,32 @@
     --accent-2:  #f7c948;
     --accent-dim: rgba(240, 180, 41, .14);
     --danger:    #da3633;
+    --border-hover: #30363d;
+    --accent-ink: #f7c948;   /* Akzentfarbe für Text */
+    --danger-ink: #ff7b78;   /* Rot für Text */
+    --on-accent:  #0d1117;   /* Text auf Akzent-Fläche */
+    --shadow:     rgba(0, 0, 0, .4);
     --radius:    14px;
     --font-display: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
     --font-body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg:        #f4f5f7;
+    --surface:   #ffffff;
+    --surface-2: #eef0f3;
+    --border:    #d8dde3;
+    --border-hover: #bcc3cc;
+    --text:      #1c2128;
+    --muted:     #5f6873;
+    --accent:    #e0a00f;
+    --accent-2:  #f0b429;
+    --accent-dim: rgba(224, 160, 15, .14);
+    --accent-ink: #8a5a00;
+    --danger-ink: #c62a27;
+    --on-accent:  #1c2128;
+    --shadow:     rgba(16, 24, 40, .14);
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -84,8 +119,21 @@
   }
   .lang-switch button[aria-pressed="true"] {
     background: var(--surface-2);
-    color: var(--accent-2);
+    color: var(--accent-ink);
   }
+  .theme-btn {
+    width: 28px; height: 28px;
+    padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+  }
+  .theme-btn:hover:not(:disabled) { color: var(--accent-ink); }
+  .theme-btn svg { width: 14px; height: 14px; }
+  /* zeigt immer den Modus, zu dem man wechselt */
+  :root[data-theme="light"] .theme-btn .i-sun,
+  :root:not([data-theme="light"]) .theme-btn .i-moon { display: none; }
   .meta {
     font-family: var(--font-display);
     font-size: 11px;
@@ -217,14 +265,14 @@
   }
   button:hover:not(:disabled) {
     background: var(--surface);
-    border-color: #30363d;
+    border-color: var(--border-hover);
   }
   button:active:not(:disabled) { transform: translateY(1px); }
   button:disabled { opacity: .4; cursor: not-allowed; }
 
   .btn-stop {
     border-color: rgba(218, 54, 51, .35);
-    color: #ff7b78;
+    color: var(--danger-ink);
   }
   .btn-stop:hover:not(:disabled) {
     background: rgba(218, 54, 51, .12);
@@ -261,7 +309,7 @@
   }
   .station:hover:not(:disabled) {
     background: var(--surface-2);
-    border-color: #30363d;
+    border-color: var(--border-hover);
   }
 
   .station .index {
@@ -294,7 +342,7 @@
     border-color: rgba(240, 180, 41, .45);
   }
   .station.is-active .index,
-  .station.is-active .genre { color: var(--accent-2); }
+  .station.is-active .genre { color: var(--accent-ink); }
   .station.is-active .name  { color: var(--text); }
 
   /* Webhook-Link-Knopf in jeder Card */
@@ -311,7 +359,7 @@
     transition: color .15s ease, background .15s ease, border-color .15s ease;
   }
   .link-btn:hover {
-    color: var(--accent-2);
+    color: var(--accent-ink);
     background: rgba(240, 180, 41, .08);
     border-color: rgba(240, 180, 41, .25);
   }
@@ -406,7 +454,7 @@
     display: inline-flex; align-items: center; justify-content: center;
   }
   .icon-btn.danger:hover:not(:disabled) {
-    color: #ff7b78;
+    color: var(--danger-ink);
     border-color: rgba(218, 54, 51, .55);
     background: rgba(218, 54, 51, .12);
   }
@@ -420,7 +468,7 @@
   .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #0d1117;
+    color: var(--on-accent);
     font-weight: 600;
   }
   .btn-primary:hover:not(:disabled) {
@@ -452,13 +500,13 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity .2s ease, transform .2s ease;
-    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    box-shadow: 0 10px 30px var(--shadow);
   }
   .toast.show {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
-  .toast.is-error { border-color: rgba(218,54,51,.45); color: #ff8a87; }
+  .toast.is-error { border-color: rgba(218,54,51,.45); color: var(--danger-ink); }
 
   footer {
     margin-top: 36px;
@@ -487,8 +535,17 @@
 <body>
   <div class="shell">
     <header>
-      <div class="brand">st<span>·</span>radio</div>
+      <div class="brand">mare<span>·</span>radio</div>
       <div class="header-right">
+        <button class="theme-btn" id="btn-theme">
+          <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+          </svg>
+          <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
         <div class="lang-switch" role="group" data-i18n-aria="language">
           <button data-lang="de" aria-pressed="false">DE</button>
           <button data-lang="en" aria-pressed="false">EN</button>
@@ -537,7 +594,7 @@
     </section>
 
     <footer>
-      <span><a href="https://github.com/matzZz/st-radio2" target="_blank" rel="noopener">matzZz / st-radio</a></span>
+      <span><a href="https://github.com/matzZz/st-radio2" target="_blank" rel="noopener">matzZz / mare-radio</a></span>
       <span id="conn">verbunden</span>
     </footer>
   </div>
@@ -566,7 +623,7 @@
   // ---------- Sprache (DE/EN) ----------
   const I18N = {
     de: {
-      language: 'Sprache',
+      language: 'Sprache', themeLight: 'Heller Modus', themeDark: 'Dunkler Modus',
       ready: 'Bereit', live: 'Live',
       noStation: '— kein Sender —', pick: 'Wähle einen Sender unten',
       stop: 'Ausschalten', stations: 'Sender', edit: 'Bearbeiten',
@@ -585,7 +642,7 @@
       confirmDel: '„{name}“ löschen?', stationN: 'Sender {n}',
     },
     en: {
-      language: 'Language',
+      language: 'Language', themeLight: 'Light mode', themeDark: 'Dark mode',
       ready: 'Ready', live: 'Live',
       noStation: '— no station —', pick: 'Pick a station below',
       stop: 'Turn off', stations: 'Stations', edit: 'Edit',
@@ -637,10 +694,32 @@
     document.querySelectorAll('.lang-switch button').forEach(b => {
       b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
     });
+    applyTheme(currentTheme());
     renderStations();
     setPlaying(currentStation);
     setOnline(online);
     if (listWrap.classList.contains('editing')) renderEditor();
+  }
+
+  // ---------- Hell/Dunkel ----------
+  const btnTheme = $('#btn-theme');
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f5f7' : '#0d1117';
+    const label = t(theme === 'light' ? 'themeDark' : 'themeLight');
+    btnTheme.title = label;
+    btnTheme.setAttribute('aria-label', label);
+  }
+
+  function toggleTheme() {
+    const next = currentTheme() === 'light' ? 'dark' : 'light';
+    try { localStorage.setItem('st-radio-theme', next); } catch (e) {}
+    applyTheme(next);
   }
 
   function setLang(next) {
@@ -914,6 +993,7 @@
   btnSave.addEventListener('click', saveStations);
   btnCancel.addEventListener('click', closeEditor);
 
+  btnTheme.addEventListener('click', toggleTheme);
   btnStop.addEventListener('click', stop);
   document.querySelectorAll('.lang-switch button').forEach(b => {
     b.addEventListener('click', () => setLang(b.dataset.lang));

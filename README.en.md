@@ -1,13 +1,13 @@
-# st-radio (modernised)
+# mare-radio
 
 🇩🇪 [Deutsche Version](README.md)
 
 A modern rewrite of the Raspberry Pi web radio [matzZz/st-radio](https://github.com/matzZz/st-radio).
 
 <p>
-  <img src="docs/screenshot-desktop.png" alt="st-radio in the browser (desktop)" width="640">
+  <img src="docs/screenshot-desktop.png" alt="mare-radio in the browser (desktop)" width="640">
   &nbsp;
-  <img src="docs/screenshot-mobile.png" alt="st-radio on a smartphone" width="200">
+  <img src="docs/screenshot-mobile.png" alt="mare-radio on a smartphone" width="200">
 </p>
 
 ## What changed
@@ -51,6 +51,10 @@ sudo usermod -aG audio www-data
 The interface is available in German and English. Switch at the top right via **DE | EN** – the browser remembers your choice. On the first visit the browser language decides (English for an English browser, German otherwise). You can also link to it directly: `http://<pi>/?lang=en`.
 
 The API returns error messages in German by default and in English with `&lang=en`.
+
+## Light / dark
+
+The sun/moon button at the top right switches between light and dark mode – the browser remembers this too. On the first visit the device's system setting decides.
 
 ## Security
 
