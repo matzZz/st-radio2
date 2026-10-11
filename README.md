@@ -55,6 +55,16 @@ Die API liefert Fehlermeldungen standardmäßig auf Deutsch, mit `&lang=en` auf 
 
 Oben rechts schaltet der Sonne/Mond-Knopf zwischen hellem und dunklem Modus um – auch das merkt sich der Browser. Beim ersten Besuch gilt die Systemeinstellung des Geräts.
 
+## Titelanzeige
+
+Viele Sender schicken im Stream mit, was gerade läuft (ICY-Metadaten). mpv liest das mit, `api.php` holt es sich über den IPC-Socket von mpv (`/tmp/st-radio-mpv.sock`, siehe `radio.sh`) und liefert es bei `action=status` als `track` mit:
+
+```json
+{"playing": true, "station": {…}, "track": {"title": "Only time / Enya"}}
+```
+
+Die Oberfläche zeigt den Titel unter dem Sendernamen. Schickt ein Sender im Stream nur seinen eigenen Namen, bleibt die Zeile leer (`track: null`). Nach einem Senderwechsel kann es ein paar Sekunden dauern, bis der erste Titel da ist.
+
 ## Sicherheit
 
 Die alte Version hat den HTTP-Parameter `name` in einen Shell-Aufruf weitergegeben. Diese Version macht das anders:
