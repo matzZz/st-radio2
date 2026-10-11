@@ -13,6 +13,9 @@ declare(strict_types=1);
  *                                          laufender Titel aus dem Stream (track, oder null)
  *   GET  api.php?action=play&id=3        → Sender mit ID 3 starten
  *   GET  api.php?action=play&slug=swr3   → Sender per Slug starten (stabil)
+ *   GET  api.php?action=play&slug=x&from=start
+ *                                        → Podcast: neueste Folge von vorn
+ *                                          (ohne from: dort fortsetzen, wo man war)
  *   GET  api.php?action=stop             → Wiedergabe stoppen
  *   POST api.php?action=save             → Senderliste speichern (JSON-Body,
  *                                          nur POST mit application/json)
@@ -26,6 +29,8 @@ declare(strict_types=1);
  * Sicherheit:
  *   - Stream-URLs werden beim Abspielen NIE aus dem Request übernommen,
  *     sondern per ID/Slug aus der CSV-Whitelist nachgeschlagen.
+ *   - Podcasts: abgerufen wird nur die Feed-URL aus der CSV; die Audio-URL
+ *     der Folge kommt aus dem Feed und muss http(s) sein.
  *   - Die Whitelist selbst ändert nur action=save: nur http(s)-URLs,
  *     und nur per POST mit JSON-Body – ein Link oder ein simples
  *     Formular von einer fremden Webseite kann sie so nicht ändern.
@@ -45,6 +50,9 @@ const PLAY_SH    = __DIR__ . '/radio.sh';
 const STOP_SH    = __DIR__ . '/ruhe.sh';
 // IPC-Socket von mpv (siehe radio.sh) – daraus kommt der Titel (ICY) des Streams
 const MPV_SOCKET = '/tmp/st-radio-mpv.sock';
+// Gemerkte Podcast-Positionen (pro Podcast: Folge, Sekunde, Dauer, fertig?)
+const POS_FILE   = __DIR__ . '/.podcast-positions.json';
+const FEED_CACHE_TTL = 1800; // Sekunden – Podcast-Feeds nicht bei jedem Klick neu laden
 
 /** Fehlermeldungen in beiden Sprachen; Platzhalter in {geschweiften Klammern}. */
 const MESSAGES = [
@@ -60,6 +68,7 @@ const MESSAGES = [
         'post_json'      => 'Speichern nur per POST mit JSON',
         'bad_data'       => 'Ungültige Daten',
         'write_failed'   => 'radio.csv konnte nicht geschrieben werden',
+        'feed_failed'    => 'Podcast-Feed konnte nicht geladen werden',
         'unknown_action' => 'Unbekannte action. Erlaubt: stations | status | play | stop | save',
     ],
     'en' => [
@@ -74,6 +83,7 @@ const MESSAGES = [
         'post_json'      => 'Saving requires POST with JSON',
         'bad_data'       => 'Invalid data',
         'write_failed'   => 'Could not write radio.csv',
+        'feed_failed'    => 'Could not load podcast feed',
         'unknown_action' => 'Unknown action. Allowed: stations | status | play | stop | save',
     ],
 ];
@@ -126,10 +136,21 @@ function load_stations(): array {
             'name'  => $name,
             'url'   => $row[1] ?? '',
             'genre' => $row[2] ?? '',
+            // Spalte 5: „podcast“ = URL ist ein RSS-Feed (wird beim Speichern erkannt)
+            'type'  => trim($row[4] ?? '') === 'podcast' ? 'podcast' : 'radio',
         ];
         $i++;
     }
     fclose($fh);
+
+    // Podcasts: gemerkte Position mitliefern (für „… gehört“)
+    $positions = read_positions();
+    foreach ($stations as &$s) {
+        if ($s['type'] === 'podcast') {
+            $s['resume'] = resume_position($positions[$s['slug']] ?? null);
+        }
+    }
+    unset($s);
     return $stations;
 }
 
@@ -179,7 +200,7 @@ function validate_stations(array $input) {
         if ($slug !== '') {
             $slugs[$slug] = true;
         }
-        $rows[] = [$name, $url, $genre, $slug];
+        $rows[] = [$name, $url, $genre, $slug, '']; // type setzt detect_podcasts()
     }
     if ($rows === []) {
         return t('need_one');
@@ -210,7 +231,7 @@ function save_stations(array $rows): bool {
     if ($fh === false) {
         return false;
     }
-    fputcsv($fh, ['name', 'url', 'genre', 'slug'], ';');
+    fputcsv($fh, ['name', 'url', 'genre', 'slug', 'type'], ';');
     foreach ($rows as $row) {
         fputcsv($fh, $row, ';');
     }
@@ -252,28 +273,11 @@ function write_state(?array $state): void {
 
 /** Fragt mpv über den IPC-Socket nach den Stream-Metadaten (icy-title, icy-name …). */
 function mpv_metadata(): ?array {
-    $sock = @stream_socket_client('unix://' . MPV_SOCKET, $errno, $errstr, 1);
-    if ($sock === false) {
-        return null;
-    }
-    stream_set_timeout($sock, 1);
-    fwrite($sock, json_encode(['command' => ['get_property', 'metadata'], 'request_id' => 1]) . "\n");
-    $data = null;
-    // mpv schickt evtl. vorher Events – bis zur Antwort mit unserer request_id lesen
-    while (($line = fgets($sock)) !== false) {
-        $msg = json_decode($line, true);
-        if (is_array($msg) && ($msg['request_id'] ?? null) === 1) {
-            if (($msg['error'] ?? '') === 'success' && is_array($msg['data'] ?? null)) {
-                $data = array_change_key_case($msg['data'], CASE_LOWER);
-            }
-            break;
-        }
-    }
-    fclose($sock);
-    return $data;
+    $data = mpv_get('metadata');
+    return is_array($data) ? array_change_key_case($data, CASE_LOWER) : null;
 }
 
-/** Bereinigt einen Text aus dem Stream (UTF-8, ohne Steuerzeichen). */
+/** Bereinigt einen Text aus Stream oder Feed (UTF-8, ohne Steuerzeichen). */
 function clean_text($value): string {
     $s = (string) $value;
     if (!mb_check_encoding($s, 'UTF-8')) {
@@ -297,12 +301,232 @@ function now_playing(array $station): ?array {
     return ['title' => $title];
 }
 
+/** Cover-URLs nur als https übernehmen (landen im <img src>). */
+function clean_cover($url): ?string {
+    $url = (string) $url;
+    return preg_match('#^https://[^\s"\'<>]+$#', $url) ? $url : null;
+}
+
 /** Prüft, ob der vermerkte mplayer-Prozess noch läuft. */
 function is_playing(?array $state): bool {
     if ($state === null || empty($state['pid'])) {
         return false;
     }
     return file_exists('/proc/' . (int)$state['pid']);
+}
+
+/** Liest eine Eigenschaft aus dem laufenden mpv (z.B. time-pos, duration). */
+function mpv_get(string $property) {
+    $sock = @stream_socket_client('unix://' . MPV_SOCKET, $errno, $errstr, 1);
+    if ($sock === false) {
+        return null;
+    }
+    stream_set_timeout($sock, 1);
+    fwrite($sock, json_encode(['command' => ['get_property', $property], 'request_id' => 1]) . "\n");
+    $data = null;
+    while (($line = fgets($sock)) !== false) {
+        $msg = json_decode($line, true);
+        if (is_array($msg) && ($msg['request_id'] ?? null) === 1) {
+            $data = ($msg['error'] ?? '') === 'success' ? ($msg['data'] ?? null) : null;
+            break;
+        }
+    }
+    fclose($sock);
+    return $data;
+}
+
+/** Prüft beim Speichern, ob eine URL ein RSS-Feed ist (liest nur den Anfang). */
+function is_feed(string $url): bool {
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 5,
+        'header'  => "User-Agent: st-radio\r\n",
+    ]]);
+    $fh = @fopen($url, 'r', false, $ctx);
+    if ($fh === false) {
+        return false;
+    }
+    stream_set_timeout($fh, 5);
+    $head = '';
+    // Höchstens 4 KB – bei einem Audio-Stream würde sonst endlos gelesen
+    while (strlen($head) < 4096 && !feof($fh)) {
+        $chunk = fread($fh, 4096 - strlen($head));
+        if ($chunk === false || $chunk === '') {
+            break;
+        }
+        $head .= $chunk;
+    }
+    fclose($fh);
+    return (bool) preg_match('/<(rss|feed)[\s>]/i', $head);
+}
+
+/** Wandelt itunes:duration („1:02:03“, „23:06“ oder Sekunden) in Sekunden um. */
+function parse_duration(string $value): int {
+    $secs = 0;
+    foreach (explode(':', trim($value)) as $part) {
+        $secs = $secs * 60 + (int) $part;
+    }
+    return $secs;
+}
+
+/**
+ * Lädt einen Podcast-Feed (zwischengespeichert) und gibt die neueste Folge zurück.
+ * @return array{url:string,title:string,cover:?string,duration:int}|null
+ */
+function latest_episode(string $feedUrl): ?array {
+    $cache = sys_get_temp_dir() . '/st-radio-feed-' . md5($feedUrl) . '.xml';
+    $xml   = false;
+    if (is_readable($cache) && time() - (int) filemtime($cache) < FEED_CACHE_TTL) {
+        $xml = file_get_contents($cache);
+    }
+    if (!$xml) {
+        $ctx = stream_context_create(['http' => [
+            'timeout' => 10,
+            'header'  => "User-Agent: st-radio\r\n",
+        ]]);
+        $xml = @file_get_contents($feedUrl, false, $ctx);
+        if ($xml) {
+            @file_put_contents($cache, $xml);
+        } elseif (is_readable($cache)) {
+            $xml = file_get_contents($cache); // offline: lieber alter Feed als gar keiner
+        }
+    }
+    if (!$xml || !class_exists('SimpleXMLElement')) {
+        return null;
+    }
+
+    $prev = libxml_use_internal_errors(true);
+    $feed = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOCDATA);
+    libxml_use_internal_errors($prev);
+    if ($feed === false || !isset($feed->channel)) {
+        return null;
+    }
+
+    $itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+    $image  = function (SimpleXMLElement $node) use ($itunes): string {
+        $img = $node->children($itunes)->image;
+        return $img && $img->attributes() ? (string) $img->attributes()->href : '';
+    };
+
+    // Neueste Folge = jüngstes pubDate (die Reihenfolge im Feed ist nicht garantiert)
+    $best = null;
+    $bestTs = -1;
+    $bestUrl = '';
+    foreach ($feed->channel->item as $item) {
+        $url = isset($item->enclosure) ? (string) $item->enclosure['url'] : '';
+        if (!preg_match('#^https?://#i', $url)) {
+            continue;
+        }
+        $ts = strtotime((string) $item->pubDate) ?: 0;
+        if ($ts > $bestTs) {
+            [$best, $bestTs, $bestUrl] = [$item, $ts, $url];
+        }
+    }
+    if ($best === null) {
+        return null;
+    }
+
+    $cover = $image($best) ?: $image($feed->channel) ?: (string) ($feed->channel->image->url ?? '');
+    return [
+        'url'      => $bestUrl,
+        'title'    => clean_text($best->title),
+        'cover'    => clean_cover($cover),
+        'duration' => parse_duration((string) $best->children($itunes)->duration),
+    ];
+}
+
+function read_positions(): array {
+    $data = is_readable(POS_FILE) ? json_decode((string) file_get_contents(POS_FILE), true) : null;
+    return is_array($data) ? $data : [];
+}
+
+function write_positions(array $positions): void {
+    file_put_contents(POS_FILE, json_encode($positions, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+}
+
+/** Sekunde, an der ein Podcast fortgesetzt würde (0 = von vorn). */
+function resume_position(?array $saved): int {
+    if (!is_array($saved) || !empty($saved['finished'])) {
+        return 0;
+    }
+    $pos = (int) ($saved['pos'] ?? 0);
+    $dur = (int) ($saved['duration'] ?? 0);
+    // Kurz vor Schluss zählt als fertig gehört
+    return ($dur > 0 && $pos >= $dur - 30) ? 0 : $pos;
+}
+
+/**
+ * Merkt sich die Position der Podcast-Folge aus $state.
+ * Läuft mpv noch, kommt die Position direkt von dort. Ist er schon beendet
+ * (Folge zu Ende), wird geschätzt, ob die Folge durchgelaufen ist.
+ */
+function save_podcast_position(?array $state): void {
+    $slug    = $state['station']['slug'] ?? '';
+    $episode = $state['episode'] ?? null;
+    if (($state['station']['type'] ?? '') !== 'podcast' || !is_array($episode) || $slug === '') {
+        return;
+    }
+    $positions = read_positions();
+    $entry = $positions[$slug] ?? [];
+    if (($entry['episode'] ?? '') !== $episode['url']) {
+        $entry = ['episode' => $episode['url'], 'pos' => 0];
+    }
+    $entry['title']    = $episode['title'];
+    $entry['duration'] = (int) ($episode['duration'] ?? 0);
+
+    if (is_playing($state)) {
+        $pos = mpv_get('time-pos');
+        $dur = mpv_get('duration');
+        if (!is_numeric($pos)) {
+            return;
+        }
+        $entry['pos'] = (int) $pos;
+        if (is_numeric($dur) && $dur > 0) {
+            $entry['duration'] = (int) $dur;
+        }
+        $entry['finished'] = false;
+    } else {
+        // mpv hat sich selbst beendet: geschätzte Position = Start + verstrichene Zeit
+        $estimate = (int) ($state['startPos'] ?? 0) + (time() - (int) ($state['startedAt'] ?? time()));
+        if ($entry['duration'] > 0 && $estimate >= $entry['duration'] - 60) {
+            $entry['finished'] = true;
+        } else {
+            return; // eher Abbruch (Netz o.ä.) – lieber die alte Position behalten
+        }
+    }
+    $entry['updated'] = time();
+    $positions[$slug] = $entry;
+    write_positions($positions);
+}
+
+/** Anzeige-Daten einer Podcast-Folge im selben Format wie now_playing(). */
+function episode_track(?array $episode): ?array {
+    return is_array($episode)
+        ? ['title' => $episode['title'], 'artist' => '', 'cover' => $episode['cover'] ?? null]
+        : null;
+}
+
+/**
+ * Erkennt beim Speichern, welche Einträge Podcast-Feeds sind (Spalte type).
+ * Nur neue oder geänderte URLs werden abgerufen.
+ */
+function detect_podcasts(array $rows): array {
+    $known = [];
+    foreach (load_stations() as $s) {
+        $known[$s['url']] = $s['type'] === 'podcast' ? 'podcast' : '';
+    }
+    foreach ($rows as &$row) {
+        $row[4] = array_key_exists($row[1], $known)
+            ? $known[$row[1]]
+            : (is_feed($row[1]) ? 'podcast' : '');
+    }
+    unset($row);
+    return $rows;
+}
+
+/** Stoppt den Player; eine laufende Podcast-Folge merkt sich vorher ihre Position. */
+function stop_player(): void {
+    save_podcast_position(read_state());
+    @exec(escapeshellcmd(STOP_SH) . ' 2>&1');
 }
 
 function respond(array $payload, int $status = 200): void {
@@ -329,6 +553,7 @@ switch ($action) {
     case 'status': {
         $state = read_state();
         if (!is_playing($state)) {
+            save_podcast_position($state); // Folge zu Ende gelaufen?
             write_state(null);
             respond(['playing' => false, 'station' => null, 'track' => null]);
         }
@@ -342,7 +567,12 @@ switch ($action) {
                 }
             }
         }
-        $track = is_array($station) ? now_playing($station) : null;
+        if (($station['type'] ?? '') === 'podcast') {
+            save_podcast_position($state); // laufend mitschreiben, falls der Pi ausgeht
+            $track = episode_track($state['episode'] ?? null);
+        } else {
+            $track = is_array($station) ? now_playing($station) : null;
+        }
         respond(['playing' => true, 'station' => $station, 'track' => $track]);
     }
 
@@ -364,27 +594,49 @@ switch ($action) {
             respond(['error' => t('not_found')], 404);
         }
 
-        // Erst laufenden Player stoppen
-        @exec(escapeshellcmd(STOP_SH) . ' 2>&1');
+        // Podcast: neueste Folge aus dem Feed, ggf. an der gemerkten Stelle
+        $url = $station['url'];
+        $episode = null;
+        $start = 0;
+        if ($station['type'] === 'podcast') {
+            $episode = latest_episode($station['url']);
+            if ($episode === null) {
+                respond(['error' => t('feed_failed')], 502);
+            }
+            $url = $episode['url'];
+        }
 
-        // Dann neuen Stream starten – URL aus Whitelist, sauber escaped
+        // Erst laufenden Player stoppen (merkt sich ggf. die Podcast-Position)
+        stop_player();
+
+        if ($episode !== null && ($_GET['from'] ?? '') !== 'start') {
+            $saved = read_positions()[$station['slug']] ?? null;
+            if (($saved['episode'] ?? '') === $episode['url']) {
+                // ein paar Sekunden zurück, damit man wieder reinkommt
+                $start = max(0, resume_position($saved) - 5);
+            }
+        }
+
+        // Dann neu starten – URL aus Whitelist bzw. deren Feed, sauber escaped
         // radio.sh startet den Player im Hintergrund und gibt dessen PID aus
-        $cmd = escapeshellcmd(PLAY_SH) . ' ' . escapeshellarg($station['url']) . ' 2>/dev/null';
+        $cmd = escapeshellcmd(PLAY_SH) . ' ' . escapeshellarg($url) . ' ' . (int) $start . ' 2>/dev/null';
         $pid = (int) trim((string) shell_exec($cmd));
 
         write_state([
             'pid'       => $pid,
             'station'   => $station,
             'startedAt' => time(),
+            'startPos'  => $start,
+            'episode'   => $episode,
         ]);
 
         maybe_redirect();
-        respond(['playing' => true, 'station' => $station]);
+        respond(['playing' => true, 'station' => $station, 'track' => episode_track($episode)]);
     }
 
     case 'stop': {
         // GET und POST beide erlaubt
-        @exec(escapeshellcmd(STOP_SH) . ' 2>&1');
+        stop_player();
         write_state(null);
         maybe_redirect();
         respond(['playing' => false, 'station' => null]);
@@ -405,6 +657,7 @@ switch ($action) {
         if (is_string($rows)) {
             respond(['error' => $rows], 400);
         }
+        $rows = detect_podcasts($rows);
         if (!save_stations($rows)) {
             respond(['error' => t('write_failed')], 500);
         }

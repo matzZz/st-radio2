@@ -212,16 +212,31 @@
     letter-spacing: .04em;
   }
 
-  /* Laufender Titel aus dem Stream (ICY) */
+  /* Laufender Titel (aus dem Stream bzw. Podcast-Folge mit Cover) */
   .now-track {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-top: 14px;
+    min-width: 0;
+  }
+  .now-track[hidden] { display: none; }
+  .now-track img {
+    flex: 0 0 auto;
+    width: 48px; height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .now-track img[hidden] { display: none; }
+  .now-track span {
     font-size: 15px;
     font-weight: 500;
     line-height: 1.3;
     color: var(--accent-ink);
     overflow-wrap: anywhere;
   }
-  .now-track[hidden] { display: none; }
 
   /* EQ-Bars als Now-Playing-Signature */
   .eq {
@@ -331,6 +346,9 @@
     min-width: 22px;
   }
   .station .body { flex: 1; min-width: 0; }
+  /* Block statt inline, sonst greift das Abschneiden mit … bei langen Namen nicht */
+  .station .name,
+  .station .genre { display: block; }
   .station .name {
     font-size: 14px;
     font-weight: 500;
@@ -346,6 +364,9 @@
     text-transform: uppercase;
     color: var(--muted);
     margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .station.is-active {
@@ -375,6 +396,14 @@
     border-color: rgba(240, 180, 41, .25);
   }
   .link-btn svg { width: 14px; height: 14px; }
+
+  /* ---------- Podcasts ---------- */
+  .pod-section { margin-top: 28px; }
+  /* breitere Karten – Podcasts haben bis zu drei Symbole */
+  #podcasts { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  .pod-section[hidden],
+  .editing .pod-section { display: none; }
+  .station .resume-at { color: var(--accent-ink); }
 
   /* Mini-EQ rechts in der aktiven Card */
   .mini-eq {
@@ -572,7 +601,10 @@
       </div>
       <div class="now is-idle" id="now" data-i18n="noStation">— kein Sender —</div>
       <div class="sub" id="sub" data-i18n="pick">Wähle einen Sender unten</div>
-      <div class="now-track" id="track" hidden></div>
+      <div class="now-track" id="track" hidden>
+        <img id="track-cover" alt="" hidden>
+        <span id="track-title"></span>
+      </div>
 
       <div class="eq" aria-hidden="true">
         <span></span><span></span><span></span><span></span>
@@ -586,12 +618,17 @@
 
     <section id="list-wrap">
       <div class="section-head">
-        <h2 class="section-title" data-i18n="stations">Sender</h2>
+        <h2 class="section-title" id="list-title" data-i18n="radio">Radio</h2>
         <button class="btn-small" id="btn-edit" data-i18n="edit">Bearbeiten</button>
       </div>
 
       <div class="grid" id="stations">
         <!-- befüllt per JS -->
+      </div>
+
+      <div class="pod-section" id="pod-section" hidden>
+        <h2 class="section-title" data-i18n="podcasts">Podcasts</h2>
+        <div class="grid" id="podcasts"></div>
       </div>
 
       <div class="editor" id="editor">
@@ -623,10 +660,15 @@
   const sub     = $('#sub');
   const btnStop = $('#btn-stop');
   const grid    = $('#stations');
+  const podGrid = $('#podcasts');
+  const podSection = $('#pod-section');
+  const listTitle  = $('#list-title');
   const toast   = $('#toast');
   const clock   = $('#clock');
   const conn    = $('#conn');
   const trackEl = $('#track');
+  const trackTitle = $('#track-title');
+  const trackCover = $('#track-cover');
 
   let stations  = [];
   let currentId = null;
@@ -640,17 +682,19 @@
       language: 'Sprache', themeLight: 'Heller Modus', themeDark: 'Dunkler Modus',
       ready: 'Bereit', live: 'Live',
       noStation: '— kein Sender —', pick: 'Wähle einen Sender unten',
-      stop: 'Ausschalten', stations: 'Sender', edit: 'Bearbeiten',
+      stop: 'Ausschalten', stations: 'Sender', radio: 'Radio', podcasts: 'Podcasts', edit: 'Bearbeiten',
       editorNote: 'Jeder Sender hat eine feste Kennung (z.&nbsp;B. <code>slug=detektorfmmusik</code>). ' +
                   'Sie bleibt beim Umbenennen und Verschieben gleich – gespeicherte Links funktionieren ' +
-                  'also weiter. Nur wer einen Sender löscht, macht seinen Link ungültig.',
+                  'also weiter. Nur wer einen Sender löscht, macht seinen Link ungültig. ' +
+                  'Für einen Podcast einfach die RSS-Feed-Adresse eintragen – das wird beim Speichern erkannt.',
+      resumeAt: '{t} gehört', resume: 'Fortsetzen', restart: 'Von vorn', podcast: 'Podcast',
       add: '+ Sender hinzufügen', save: 'Speichern', cancel: 'Abbrechen',
       connected: 'verbunden', offline: 'offline',
       copyLink: 'Webhook-URL kopieren', copyLinkFor: 'Webhook-URL für {name} kopieren',
       copied: 'Webhook-URL kopiert: {slug}',
       playing: 'Spielt: {name}', stopped: 'Gestoppt.',
       loadFailed: 'Senderliste konnte nicht geladen werden', saved: 'Senderliste gespeichert.',
-      name: 'Name', url: 'Stream-URL', urlPlaceholder: 'https://… (Stream-URL)', genre: 'Genre',
+      name: 'Name', url: 'Stream-URL', urlPlaceholder: 'https://… (Stream- oder Podcast-Feed-URL)', genre: 'Genre',
       up: 'Nach oben', down: 'Nach unten', del: 'Löschen',
       slug: 'Kennung:', slugNew: 'Kennung wird beim Speichern aus dem Namen vergeben',
       confirmDel: '„{name}“ löschen?', stationN: 'Sender {n}',
@@ -659,17 +703,19 @@
       language: 'Language', themeLight: 'Light mode', themeDark: 'Dark mode',
       ready: 'Ready', live: 'Live',
       noStation: '— no station —', pick: 'Pick a station below',
-      stop: 'Turn off', stations: 'Stations', edit: 'Edit',
+      stop: 'Turn off', stations: 'Stations', radio: 'Radio', podcasts: 'Podcasts', edit: 'Edit',
       editorNote: 'Every station has a fixed ID (e.g. <code>slug=detektorfmmusik</code>). ' +
                   'It stays the same when you rename or move a station, so saved links keep ' +
-                  'working. Only deleting a station breaks its link.',
+                  'working. Only deleting a station breaks its link. ' +
+                  'For a podcast, just enter its RSS feed URL – it is detected when saving.',
+      resumeAt: '{t} played', resume: 'Resume', restart: 'From the start', podcast: 'Podcast',
       add: '+ Add station', save: 'Save', cancel: 'Cancel',
       connected: 'connected', offline: 'offline',
       copyLink: 'Copy webhook URL', copyLinkFor: 'Copy webhook URL for {name}',
       copied: 'Webhook URL copied: {slug}',
       playing: 'Playing: {name}', stopped: 'Stopped.',
       loadFailed: 'Could not load station list', saved: 'Station list saved.',
-      name: 'Name', url: 'Stream URL', urlPlaceholder: 'https://… (stream URL)', genre: 'Genre',
+      name: 'Name', url: 'Stream URL', urlPlaceholder: 'https://… (stream or podcast feed URL)', genre: 'Genre',
       up: 'Move up', down: 'Move down', del: 'Delete',
       slug: 'ID:', slugNew: 'ID will be generated from the name when saving',
       confirmDel: 'Delete “{name}”?', stationN: 'Station {n}',
@@ -752,7 +798,8 @@
 
   async function api(action, opts = {}) {
     const url = `api.php?action=${encodeURIComponent(action)}&lang=${lang}` +
-                (opts.id != null ? `&id=${encodeURIComponent(opts.id)}` : '');
+                (opts.id != null ? `&id=${encodeURIComponent(opts.id)}` : '') +
+                (opts.from ? `&from=${encodeURIComponent(opts.from)}` : '');
     const res = await fetch(url, { method: opts.method || 'GET' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -761,10 +808,26 @@
     return res.json();
   }
 
+  /** Sekunden als 12:34 bzw. 1:02:03. */
+  function formatTime(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), ss = String(sec % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+
+  const ICON_RESUME = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"></path></svg>';
+  const ICON_RESTART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>';
+
   function renderStations() {
     grid.innerHTML = '';
+    podGrid.innerHTML = '';
     const origin = location.origin + location.pathname.replace(/[^/]*$/, '');
+    const count = { radio: 0, podcast: 0 };
     stations.forEach(s => {
+      const isPod = s.type === 'podcast';
+      const nr = ++count[isPod ? 'podcast' : 'radio'];
+      // Podcast mit gemerkter Stelle (und nicht gerade am Laufen): Symbole zum Fortsetzen / von vorn
+      const canResume = isPod && s.resume > 0 && s.id !== currentId;
       const card = document.createElement('div');
       card.className = 'station';
       card.dataset.id = s.id;
@@ -775,14 +838,17 @@
           all: unset; cursor: pointer; flex: 1; display: flex; align-items: center;
           gap: 12px; min-width: 0; color: inherit;
         ">
-          <span class="index">${String(s.id).padStart(2, '0')}</span>
+          <span class="index">${String(nr).padStart(2, '0')}</span>
           <span class="body">
             <span class="name"></span>
             <span class="genre"></span>
           </span>
         </button>
         <span class="mini-eq" aria-hidden="true"><span></span><span></span><span></span></span>
-        <button class="link-btn" title="${esc(t('copyLink'))}" aria-label="${esc(t('copyLinkFor', { name: s.name }))}">
+        ${canResume ? `
+        <button class="link-btn" data-act="resume" title="${esc(t('resume'))}" aria-label="${esc(t('resume'))}">${ICON_RESUME}</button>
+        <button class="link-btn" data-act="restart" title="${esc(t('restart'))}" aria-label="${esc(t('restart'))}">${ICON_RESTART}</button>` : ''}
+        <button class="link-btn" data-act="link" title="${esc(t('copyLink'))}" aria-label="${esc(t('copyLinkFor', { name: s.name }))}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
@@ -790,16 +856,28 @@
         </button>
       `;
       card.querySelector('.name').textContent  = s.name;
-      card.querySelector('.genre').textContent = s.genre || 'Radio';
+      const genre = card.querySelector('.genre');
+      if (canResume) {
+        genre.textContent = t('resumeAt', { t: formatTime(s.resume) });
+        genre.classList.add('resume-at');
+      } else {
+        genre.textContent = s.genre || (isPod ? t('podcast') : 'Radio');
+      }
+      // Klick auf die Karte: Radio starten bzw. Podcast fortsetzen
       card.querySelector('.play-area').addEventListener('click', () => play(s.id));
-      card.querySelector('.link-btn').addEventListener('click', (ev) => {
+      if (canResume) {
+        card.querySelector('[data-act=resume]').addEventListener('click', () => play(s.id));
+        card.querySelector('[data-act=restart]').addEventListener('click', () => play(s.id, 'start'));
+      }
+      card.querySelector('[data-act=link]').addEventListener('click', (ev) => {
         ev.stopPropagation();
         const url = origin + 'api.php?action=play&slug=' + encodeURIComponent(s.slug);
         copyToClipboard(url);
         showToast(t('copied', { slug: s.slug }));
       });
-      grid.appendChild(card);
+      (isPod ? podGrid : grid).appendChild(card);
     });
+    podSection.hidden = count.podcast === 0;
   }
 
   function copyToClipboard(text) {
@@ -820,16 +898,30 @@
     document.body.removeChild(ta);
   }
 
-  /** Zeigt den laufenden Titel aus dem Stream (oder blendet die Zeile aus). */
+  /** Zeigt den laufenden Titel bzw. die Podcast-Folge (oder blendet die Zeile aus). */
   function setTrack(track) {
     currentTrack = track || null;
     trackEl.hidden = !currentTrack;
-    trackEl.textContent = currentTrack ? currentTrack.title : '';
+    if (!currentTrack) return;
+    trackTitle.textContent = currentTrack.title;
+    if (currentTrack.cover) {
+      if (trackCover.getAttribute('src') !== currentTrack.cover) trackCover.src = currentTrack.cover;
+      trackCover.hidden = false;
+    } else {
+      trackCover.removeAttribute('src');
+      trackCover.hidden = true;
+    }
   }
 
   function setPlaying(station, track = null) {
+    const prev = currentStation;
     currentStation = station;
     currentId = station ? station.id : null;
+    if ((prev ? prev.id : null) !== currentId) {
+      // Podcast beendet/gewechselt → gemerkte Stelle neu laden; sonst nur Karten neu zeichnen
+      if (prev && prev.type === 'podcast') loadStations();
+      else renderStations();
+    }
     setTrack(station ? track : null);
 
     if (station) {
@@ -838,7 +930,8 @@
       stateLb.textContent = t('live');
       now.textContent = station.name;
       now.classList.remove('is-idle');
-      sub.textContent = station.genre ? station.genre.toUpperCase() : 'STREAM';
+      sub.textContent = station.genre ? station.genre.toUpperCase()
+                      : (station.type === 'podcast' ? t('podcast').toUpperCase() : 'STREAM');
       btnStop.disabled = false;
     } else {
       display.classList.remove('is-playing');
@@ -851,7 +944,7 @@
     }
 
     // Cards aktualisieren
-    grid.querySelectorAll('.station').forEach(el => {
+    document.querySelectorAll('.grid .station').forEach(el => {
       const active = Number(el.dataset.id) === currentId;
       el.classList.toggle('is-active', active);
       const playBtn = el.querySelector('.play-area');
@@ -859,10 +952,10 @@
     });
   }
 
-  async function play(id) {
+  async function play(id, from) {
     try {
-      const data = await api('play', { method: 'POST', id });
-      setPlaying(data.station);
+      const data = await api('play', { method: 'POST', id, from });
+      setPlaying(data.station, data.track);
       showToast(t('playing', { name: data.station.name }));
       // mpv braucht einen Moment, bis die ersten Stream-Infos da sind
       setTimeout(refreshStatus, 2500);
@@ -924,16 +1017,20 @@
   let draft = [];
 
   function openEditor() {
-    draft = stations.map(s => ({ name: s.name, url: s.url, genre: s.genre, slug: s.slug }));
+    draft = stations.map(s => ({ name: s.name, url: s.url, genre: s.genre, slug: s.slug, type: s.type }));
     if (draft.length === 0) draft.push({ name: '', url: '', genre: '', slug: '' });
     renderEditor();
     listWrap.classList.add('editing');
     btnEdit.hidden = true;
+    listTitle.dataset.i18n = 'stations';
+    listTitle.textContent = t('stations');
   }
 
   function closeEditor() {
     listWrap.classList.remove('editing');
     btnEdit.hidden = false;
+    listTitle.dataset.i18n = 'radio';
+    listTitle.textContent = t('radio');
   }
 
   function renderEditor() {
@@ -963,6 +1060,7 @@
       if (s.slug) {
         slugEl.innerHTML = esc(t('slug')) + ' <code></code>';
         slugEl.querySelector('code').textContent = s.slug;
+        if (s.type === 'podcast') slugEl.append(' · ' + t('podcast'));
       } else {
         slugEl.textContent = t('slugNew');
       }
@@ -1018,6 +1116,9 @@
   btnCancel.addEventListener('click', closeEditor);
 
   btnTheme.addEventListener('click', toggleTheme);
+  // Cover nicht ladbar → lieber gar kein Bild als ein kaputtes
+  trackCover.addEventListener('error', () => { trackCover.hidden = true; });
+
   btnStop.addEventListener('click', stop);
   document.querySelectorAll('.lang-switch button').forEach(b => {
     b.addEventListener('click', () => setLang(b.dataset.lang));

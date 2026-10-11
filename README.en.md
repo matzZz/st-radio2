@@ -34,7 +34,7 @@ A modern rewrite of the Raspberry Pi web radio [matzZz/st-radio](https://github.
 ## Setup
 
 ```sh
-sudo apt-get install mpv apache2 php php-mbstring
+sudo apt-get install mpv apache2 php php-mbstring php-xml
 # copy the project files to /var/www/html/
 sudo chown -R www-data:www-data /var/www/html
 sudo chmod +x /var/www/html/radio.sh /var/www/html/ruhe.sh
@@ -66,6 +66,18 @@ Many stations send what's currently playing inside the stream (ICY metadata). mp
 
 The interface shows the title below the station name. If a station only sends its own name in the stream, the line stays empty (`track: null`). After switching stations it can take a few seconds until the first title shows up.
 
+## Podcasts
+
+Podcasts live in the same station list: in the editor, just enter the **RSS feed URL** instead of a stream URL. When saving, `api.php` detects that it's a feed and marks it in `radio.csv` (column 5 `type` = `podcast`). In the interface, podcasts get their own section below the radio stations.
+
+- **Clicking the card** plays the latest episode (newest `pubDate` in the feed) – and resumes where you left off.
+- Once an episode is started, the card shows e.g. "12:34 played" and two icons: **▶** resume, **↺** from the start.
+- At the end of an episode playback stops; the episode then counts as played and starts from the beginning on the next click – until a new episode appears.
+- `api.php` remembers the position when stopping, when switching stations and continuously while the interface is open (`.podcast-positions.json`). Feeds are cached for 30 minutes.
+- Via link: `api.php?action=play&slug=<podcast>` resumes, `&from=start` plays the latest episode from the start.
+
+PHP needs the XML extension to read feeds (`php-xml`, see Setup).
+
 ## Security
 
 The old version passed the HTTP parameter `name` into a shell call. This version works differently:
@@ -75,6 +87,8 @@ The old version passed the HTTP parameter `name` into a shell call. This version
 3. Only the URL from the CSV is passed to `radio.sh` – through `escapeshellarg()`.
 
 So there is no path left for a web request to run an arbitrary shell command on the Pi.
+
+For podcasts, too, only the feed URL from `radio.csv` is fetched. The episode's audio URL comes from the feed, must be `http(s)` and is passed to `radio.sh` escaped in the same way.
 
 ## Managing stations
 
