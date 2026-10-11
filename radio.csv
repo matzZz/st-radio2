@@ -1,6 +1,7 @@
-name;url;genre
+name;url;genre;slug;type
 detektorfmWort;https://streams.detektor.fm/wort/mp3-256/website/play.pls;Talk
 detektorfmMusik;https://streams.detektor.fm/musik/mp3-256/website/play.pls;Indie
 SWR1;https://dispatcher.rndfnk.com/swr/swr1/bw/mp3/128/stream.mp3;Pop
 Regenbogen;http://streams.regenbogen.de/rr-mannheim-128-aac;Pop
 ByteFM;https://bytefm--di--nacs-ice-01--01--cdn.cast.addradio.de/bytefm/main/mid/stream.mp3;Indie
+tagesschau in 100 Sekunden;https://www.tagesschau.de/multimedia/sendung/tagesschau_in_100_sekunden/podcast-ts100-audio-100~podcast.xml;Nachrichten;;podcast

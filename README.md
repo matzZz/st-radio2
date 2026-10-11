@@ -33,7 +33,7 @@ Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/mat
 ## Setup
 
 ```sh
-sudo apt-get install mpv apache2 php php-mbstring
+sudo apt-get install mpv apache2 php php-mbstring php-xml
 # Projektdateien nach /var/www/html/ kopieren
 sudo chown -R www-data:www-data /var/www/html
 sudo chmod +x /var/www/html/radio.sh /var/www/html/ruhe.sh
@@ -65,6 +65,18 @@ Viele Sender schicken im Stream mit, was gerade läuft (ICY-Metadaten). mpv lies
 
 Die Oberfläche zeigt den Titel unter dem Sendernamen. Schickt ein Sender im Stream nur seinen eigenen Namen, bleibt die Zeile leer (`track: null`). Nach einem Senderwechsel kann es ein paar Sekunden dauern, bis der erste Titel da ist.
 
+## Podcasts
+
+Podcasts stehen in derselben Senderliste: Im Editor statt einer Stream-URL einfach die **RSS-Feed-Adresse** eintragen. Beim Speichern erkennt `api.php`, dass es ein Feed ist, und vermerkt das in `radio.csv` (Spalte 5 `type` = `podcast`). In der Oberfläche erscheinen Podcasts in einem eigenen Bereich unter den Radiosendern.
+
+- **Klick auf die Karte** spielt die neueste Folge (jüngstes `pubDate` im Feed) – und setzt dort fort, wo man aufgehört hat.
+- Ist eine Folge angefangen, zeigt die Karte z.B. „12:34 gehört“ und zwei Symbole: **▶** fortsetzen, **↺** von vorn.
+- Am Ende einer Folge stoppt die Wiedergabe; die Folge gilt dann als gehört und startet beim nächsten Klick von vorn – bis eine neue Folge erscheint.
+- Die Position merkt sich `api.php` beim Stoppen, beim Senderwechsel und laufend, solange die Oberfläche offen ist (`.podcast-positions.json`). Feeds werden 30 Minuten zwischengespeichert.
+- Per Link: `api.php?action=play&slug=<podcast>` setzt fort, `&from=start` startet die neueste Folge von vorn.
+
+Zum Lesen der Feeds braucht PHP die XML-Erweiterung (`php-xml`, siehe Setup).
+
 ## Sicherheit
 
 Die alte Version hat den HTTP-Parameter `name` in einen Shell-Aufruf weitergegeben. Diese Version macht das anders:
@@ -74,6 +86,8 @@ Die alte Version hat den HTTP-Parameter `name` in einen Shell-Aufruf weitergegeb
 3. Nur die in der CSV stehende URL wandert nach `radio.sh` – und dort durch `escapeshellarg()`.
 
 Damit gibt es keinen Pfad mehr, über den ein Webrequest direkt eine beliebige Shell-Anweisung auf dem Pi auslösen könnte.
+
+Bei Podcasts wird ebenfalls nur die Feed-URL aus `radio.csv` abgerufen. Die Audio-Adresse der Folge kommt aus dem Feed, muss `http(s)` sein und geht genauso escaped an `radio.sh`.
 
 ## Senderpflege
 
