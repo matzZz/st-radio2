@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * st-radio – JSON API
+ * mare-radio – JSON API
  *
  * Endpoints (alle GET und POST erlaubt – GET ist absichtlich okay,
  * damit man Sender per Webhook / Bookmarklet / Tasker / Homebridge

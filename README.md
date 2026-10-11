@@ -1,13 +1,13 @@
-# st-radio (modernisiert)
+# mare-radio
 
 🇬🇧 [English version](README.en.md)
 
 Moderne Neuauflage des Pi-Webradios von [matzZz/st-radio](https://github.com/matzZz/st-radio).
 
 <p>
-  <img src="docs/screenshot-desktop.png" alt="st-radio im Browser (Desktop)" width="640">
+  <img src="docs/screenshot-desktop.png" alt="mare-radio im Browser (Desktop)" width="640">
   &nbsp;
-  <img src="docs/screenshot-mobile.png" alt="st-radio auf dem Smartphone" width="200">
+  <img src="docs/screenshot-mobile.png" alt="mare-radio auf dem Smartphone" width="200">
 </p>
 
 ## Was sich geändert hat
@@ -50,6 +50,10 @@ sudo usermod -aG audio www-data
 Die Oberfläche gibt es auf Deutsch und Englisch. Umschalten oben rechts über **DE | EN** – die Wahl merkt sich der Browser. Beim ersten Besuch gilt die Browsersprache (Englisch bei englischem Browser, sonst Deutsch). Per Link geht es auch direkt: `http://<pi>/?lang=en`.
 
 Die API liefert Fehlermeldungen standardmäßig auf Deutsch, mit `&lang=en` auf Englisch.
+
+## Hell / Dunkel
+
+Oben rechts schaltet der Sonne/Mond-Knopf zwischen hellem und dunklem Modus um – auch das merkt sich der Browser. Beim ersten Besuch gilt die Systemeinstellung des Geräts.
 
 ## Sicherheit
 
