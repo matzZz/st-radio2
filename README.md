@@ -73,7 +73,7 @@ Podcasts stehen in derselben Senderliste: Im Editor statt einer Stream-URL einfa
 - Ist eine Folge angefangen, zeigt die Karte z.B. „12:34 gehört“ und zwei Symbole: **▶** fortsetzen, **↺** von vorn.
 - Am Ende einer Folge stoppt die Wiedergabe; die Folge gilt dann als gehört und startet beim nächsten Klick von vorn – bis eine neue Folge erscheint.
 - Die Position merkt sich `api.php` beim Stoppen, beim Senderwechsel und laufend, solange die Oberfläche offen ist (`.podcast-positions.json`). Feeds werden 30 Minuten zwischengespeichert.
-- Per Link: `api.php?action=play&slug=<podcast>` setzt fort, `&from=start` startet die neueste Folge von vorn.
+- Per Link: `api.php?action=play&slug=<podcast>&from=resume` setzt fort (auch ohne `from`), `&from=start` startet die neueste Folge von vorn. Das Link-Symbol auf der Podcast-Karte bietet beide Varianten zum Kopieren an.
 
 Zum Lesen der Feeds braucht PHP die XML-Erweiterung (`php-xml`, siehe Setup).
 
