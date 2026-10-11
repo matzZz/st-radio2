@@ -56,6 +56,16 @@ The API returns error messages in German by default and in English with `&lang=e
 
 The sun/moon button at the top right switches between light and dark mode – the browser remembers this too. On the first visit the device's system setting decides.
 
+## Now playing
+
+Many stations send what's currently playing inside the stream (ICY metadata). mpv picks it up, `api.php` reads it through mpv's IPC socket (`/tmp/st-radio-mpv.sock`, see `radio.sh`) and returns it as `track` with `action=status`:
+
+```json
+{"playing": true, "station": {…}, "track": {"title": "Only time / Enya"}}
+```
+
+The interface shows the title below the station name. If a station only sends its own name in the stream, the line stays empty (`track: null`). After switching stations it can take a few seconds until the first title shows up.
+
 ## Security
 
 The old version passed the HTTP parameter `name` into a shell call. This version works differently:

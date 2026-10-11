@@ -9,7 +9,8 @@ declare(strict_types=1);
  * mit einem simplen URL-Aufruf starten kann):
  *
  *   GET  api.php?action=stations         → Liste aller Sender
- *   GET  api.php?action=status           → aktueller Sender (oder null)
+ *   GET  api.php?action=status           → aktueller Sender (oder null) und
+ *                                          laufender Titel aus dem Stream (track, oder null)
  *   GET  api.php?action=play&id=3        → Sender mit ID 3 starten
  *   GET  api.php?action=play&slug=swr3   → Sender per Slug starten (stabil)
  *   GET  api.php?action=stop             → Wiedergabe stoppen
@@ -42,6 +43,8 @@ const CSV_FILE   = __DIR__ . '/radio.csv';
 const STATE_FILE = __DIR__ . '/.radio-state.json';
 const PLAY_SH    = __DIR__ . '/radio.sh';
 const STOP_SH    = __DIR__ . '/ruhe.sh';
+// IPC-Socket von mpv (siehe radio.sh) – daraus kommt der Titel (ICY) des Streams
+const MPV_SOCKET = '/tmp/st-radio-mpv.sock';
 
 /** Fehlermeldungen in beiden Sprachen; Platzhalter in {geschweiften Klammern}. */
 const MESSAGES = [
@@ -247,6 +250,53 @@ function write_state(?array $state): void {
     file_put_contents(STATE_FILE, json_encode($state, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 }
 
+/** Fragt mpv über den IPC-Socket nach den Stream-Metadaten (icy-title, icy-name …). */
+function mpv_metadata(): ?array {
+    $sock = @stream_socket_client('unix://' . MPV_SOCKET, $errno, $errstr, 1);
+    if ($sock === false) {
+        return null;
+    }
+    stream_set_timeout($sock, 1);
+    fwrite($sock, json_encode(['command' => ['get_property', 'metadata'], 'request_id' => 1]) . "\n");
+    $data = null;
+    // mpv schickt evtl. vorher Events – bis zur Antwort mit unserer request_id lesen
+    while (($line = fgets($sock)) !== false) {
+        $msg = json_decode($line, true);
+        if (is_array($msg) && ($msg['request_id'] ?? null) === 1) {
+            if (($msg['error'] ?? '') === 'success' && is_array($msg['data'] ?? null)) {
+                $data = array_change_key_case($msg['data'], CASE_LOWER);
+            }
+            break;
+        }
+    }
+    fclose($sock);
+    return $data;
+}
+
+/** Bereinigt einen Text aus dem Stream (UTF-8, ohne Steuerzeichen). */
+function clean_text($value): string {
+    $s = (string) $value;
+    if (!mb_check_encoding($s, 'UTF-8')) {
+        $s = mb_convert_encoding($s, 'UTF-8', 'ISO-8859-1');
+    }
+    return clean_field($s, 200);
+}
+
+/**
+ * Laufender Titel aus dem Stream (ICY-Metadaten über mpv).
+ * Schickt der Sender dort nur seinen Namen, gibt es null.
+ * @return array{title:string}|null
+ */
+function now_playing(array $station): ?array {
+    $meta  = mpv_metadata() ?? [];
+    $title = clean_text($meta['icy-title'] ?? '');
+    $names = [mb_strtolower($station['name']), mb_strtolower(clean_text($meta['icy-name'] ?? ''))];
+    if ($title === '' || in_array(mb_strtolower($title), $names, true)) {
+        return null;
+    }
+    return ['title' => $title];
+}
+
 /** Prüft, ob der vermerkte mplayer-Prozess noch läuft. */
 function is_playing(?array $state): bool {
     if ($state === null || empty($state['pid'])) {
@@ -280,7 +330,7 @@ switch ($action) {
         $state = read_state();
         if (!is_playing($state)) {
             write_state(null);
-            respond(['playing' => false, 'station' => null]);
+            respond(['playing' => false, 'station' => null, 'track' => null]);
         }
         $station = $state['station'] ?? null;
         // Wurde die Senderliste inzwischen bearbeitet, aktuelle ID/Name nachschlagen
@@ -292,7 +342,8 @@ switch ($action) {
                 }
             }
         }
-        respond(['playing' => true, 'station' => $station]);
+        $track = is_array($station) ? now_playing($station) : null;
+        respond(['playing' => true, 'station' => $station, 'track' => $track]);
     }
 
     case 'play': {

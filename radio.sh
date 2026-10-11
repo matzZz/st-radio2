@@ -16,7 +16,8 @@ URL="$1"
 # Falls noch ein alter Player läuft, zuerst beenden.
 pkill -x mpv >/dev/null 2>&1 || true
 
-# Stream starten, vom Terminal lösen, alles ins Nirvana umleiten
-nohup mpv --no-video --really-quiet -- "$URL" </dev/null >/dev/null 2>&1 &
+# Stream starten, vom Terminal lösen, alles ins Nirvana umleiten.
+# Über den IPC-Socket liest api.php den aktuellen Titel (ICY) aus mpv.
+nohup mpv --no-video --really-quiet --input-ipc-server=/tmp/st-radio-mpv.sock -- "$URL" </dev/null >/dev/null 2>&1 &
 
 echo $!

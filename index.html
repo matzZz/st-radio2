@@ -212,6 +212,17 @@
     letter-spacing: .04em;
   }
 
+  /* Laufender Titel aus dem Stream (ICY) */
+  .now-track {
+    margin-top: 14px;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--accent-ink);
+    overflow-wrap: anywhere;
+  }
+  .now-track[hidden] { display: none; }
+
   /* EQ-Bars als Now-Playing-Signature */
   .eq {
     margin-top: 18px;
@@ -561,6 +572,7 @@
       </div>
       <div class="now is-idle" id="now" data-i18n="noStation">— kein Sender —</div>
       <div class="sub" id="sub" data-i18n="pick">Wähle einen Sender unten</div>
+      <div class="now-track" id="track" hidden></div>
 
       <div class="eq" aria-hidden="true">
         <span></span><span></span><span></span><span></span>
@@ -614,10 +626,12 @@
   const toast   = $('#toast');
   const clock   = $('#clock');
   const conn    = $('#conn');
+  const trackEl = $('#track');
 
   let stations  = [];
   let currentId = null;
   let currentStation = null;
+  let currentTrack = null;
   let online    = true;
 
   // ---------- Sprache (DE/EN) ----------
@@ -696,7 +710,7 @@
     });
     applyTheme(currentTheme());
     renderStations();
-    setPlaying(currentStation);
+    setPlaying(currentStation, currentTrack);
     setOnline(online);
     if (listWrap.classList.contains('editing')) renderEditor();
   }
@@ -806,9 +820,17 @@
     document.body.removeChild(ta);
   }
 
-  function setPlaying(station) {
+  /** Zeigt den laufenden Titel aus dem Stream (oder blendet die Zeile aus). */
+  function setTrack(track) {
+    currentTrack = track || null;
+    trackEl.hidden = !currentTrack;
+    trackEl.textContent = currentTrack ? currentTrack.title : '';
+  }
+
+  function setPlaying(station, track = null) {
     currentStation = station;
     currentId = station ? station.id : null;
+    setTrack(station ? track : null);
 
     if (station) {
       display.classList.add('is-playing');
@@ -842,6 +864,8 @@
       const data = await api('play', { method: 'POST', id });
       setPlaying(data.station);
       showToast(t('playing', { name: data.station.name }));
+      // mpv braucht einen Moment, bis die ersten Stream-Infos da sind
+      setTimeout(refreshStatus, 2500);
     } catch (e) {
       showToast(e.message, true);
     }
@@ -871,7 +895,7 @@
     try {
       const data = await api('status');
       setOnline(true);
-      setPlaying(data.playing ? data.station : null);
+      setPlaying(data.playing ? data.station : null, data.track);
     } catch (e) {
       setOnline(false);
     }
