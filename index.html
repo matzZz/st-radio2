@@ -405,6 +405,32 @@
   .editing .pod-section { display: none; }
   .station .resume-at { color: var(--accent-ink); }
 
+  /* Auswahl beim Link-Symbol eines Podcasts: Webhook fortsetzen / von vorn */
+  .station { position: relative; }
+  .link-menu {
+    position: absolute;
+    top: calc(100% - 8px);
+    right: 10px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px var(--shadow);
+  }
+  .link-menu button {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 13px;
+  }
+  .link-menu button:hover:not(:disabled) { background: var(--surface-2); }
+
   /* Mini-EQ rechts in der aktiven Card */
   .mini-eq {
     display: none;
@@ -692,6 +718,7 @@
       connected: 'verbunden', offline: 'offline',
       copyLink: 'Webhook-URL kopieren', copyLinkFor: 'Webhook-URL für {name} kopieren',
       copied: 'Webhook-URL kopiert: {slug}',
+      linkResume: 'Link: fortsetzen', linkStart: 'Link: von vorn',
       playing: 'Spielt: {name}', stopped: 'Gestoppt.',
       loadFailed: 'Senderliste konnte nicht geladen werden', saved: 'Senderliste gespeichert.',
       name: 'Name', url: 'Stream-URL', urlPlaceholder: 'https://… (Stream- oder Podcast-Feed-URL)', genre: 'Genre',
@@ -713,6 +740,7 @@
       connected: 'connected', offline: 'offline',
       copyLink: 'Copy webhook URL', copyLinkFor: 'Copy webhook URL for {name}',
       copied: 'Webhook URL copied: {slug}',
+      linkResume: 'Link: resume', linkStart: 'Link: from the start',
       playing: 'Playing: {name}', stopped: 'Stopped.',
       loadFailed: 'Could not load station list', saved: 'Station list saved.',
       name: 'Name', url: 'Stream URL', urlPlaceholder: 'https://… (stream or podcast feed URL)', genre: 'Genre',
@@ -869,16 +897,44 @@
         card.querySelector('[data-act=resume]').addEventListener('click', () => play(s.id));
         card.querySelector('[data-act=restart]').addEventListener('click', () => play(s.id, 'start'));
       }
-      card.querySelector('[data-act=link]').addEventListener('click', (ev) => {
+      const linkBtn = card.querySelector('[data-act=link]');
+      const playUrl = origin + 'api.php?action=play&slug=' + encodeURIComponent(s.slug);
+      linkBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        const url = origin + 'api.php?action=play&slug=' + encodeURIComponent(s.slug);
-        copyToClipboard(url);
-        showToast(t('copied', { slug: s.slug }));
+        if (!isPod) {
+          copyToClipboard(playUrl);
+          showToast(t('copied', { slug: s.slug }));
+          return;
+        }
+        // Podcast: Auswahl, ob der Link fortsetzt oder von vorn startet
+        const wasOpen = card.querySelector('.link-menu');
+        closeLinkMenu();
+        if (wasOpen) return;
+        const menu = document.createElement('div');
+        menu.className = 'link-menu';
+        for (const [key, from, label] of [['linkResume', 'resume', 'resume'], ['linkStart', 'start', 'restart']]) {
+          const item = document.createElement('button');
+          item.textContent = t(key);
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyToClipboard(playUrl + '&from=' + from);
+            showToast(t('copied', { slug: s.slug + ' · ' + t(label) }));
+            closeLinkMenu();
+          });
+          menu.appendChild(item);
+        }
+        card.appendChild(menu);
       });
       (isPod ? podGrid : grid).appendChild(card);
     });
     podSection.hidden = count.podcast === 0;
   }
+
+  function closeLinkMenu() {
+    document.querySelectorAll('.link-menu').forEach(m => m.remove());
+  }
+  document.addEventListener('click', closeLinkMenu);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLinkMenu(); });
 
   function copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {

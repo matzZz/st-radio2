@@ -74,7 +74,7 @@ Podcasts live in the same station list: in the editor, just enter the **RSS feed
 - Once an episode is started, the card shows e.g. "12:34 played" and two icons: **▶** resume, **↺** from the start.
 - At the end of an episode playback stops; the episode then counts as played and starts from the beginning on the next click – until a new episode appears.
 - `api.php` remembers the position when stopping, when switching stations and continuously while the interface is open (`.podcast-positions.json`). Feeds are cached for 30 minutes.
-- Via link: `api.php?action=play&slug=<podcast>` resumes, `&from=start` plays the latest episode from the start.
+- Via link: `api.php?action=play&slug=<podcast>&from=resume` resumes (also without `from`), `&from=start` plays the latest episode from the start. The link icon on a podcast card offers both variants to copy.
 
 PHP needs the XML extension to read feeds (`php-xml`, see Setup).
 

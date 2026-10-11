@@ -15,7 +15,9 @@ declare(strict_types=1);
  *   GET  api.php?action=play&slug=swr3   → Sender per Slug starten (stabil)
  *   GET  api.php?action=play&slug=x&from=start
  *                                        → Podcast: neueste Folge von vorn
- *                                          (ohne from: dort fortsetzen, wo man war)
+ *   GET  api.php?action=play&slug=x&from=resume
+ *                                        → Podcast: dort fortsetzen, wo man war
+ *                                          (Standard, auch ohne from)
  *   GET  api.php?action=stop             → Wiedergabe stoppen
  *   POST api.php?action=save             → Senderliste speichern (JSON-Body,
  *                                          nur POST mit application/json)
